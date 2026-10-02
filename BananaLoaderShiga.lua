@@ -2143,6 +2143,7 @@ StatusTyrant = SectionStatus.CreateLabel({ Title = "Eyes Summon Tyrant" })
 StatusKatakuri = SectionStatus.CreateLabel({ Title = "Summon Katakuri" })
 Statusspy = SectionStatus.CreateLabel({ Title = "Status SPY" })
 StatusMirage = SectionStatus.CreateLabel({ Title = "Mirage" })
+StatusKitsuneIsland = SectionStatus.CreateLabel({ Title = "Kitsune Island" })
 StatusPrehistoricIsland = SectionStatus.CreateLabel({ Title = "Prehistoric Island" })
 StatusFrozenDimension = SectionStatus.CreateLabel({ Title = "Frozen Dimension" })
 StatusMoon = SectionStatus.CreateLabel({ Title = "Moon" })
@@ -3641,6 +3642,13 @@ spawn(function()
 				StatusMirage.SetText("Mirage Island: \226\156\133")
 			else
 				StatusMirage.SetText("Mirage Island: \226\157\140")
+			end
+			local kitsuneSpawned = (workspace.Map and (workspace.Map:FindFirstChild("KitsuneIsland") or workspace.Map:FindFirstChild("Kitsune Island")))
+				or (workspace:FindFirstChild("_WorldOrigin") and workspace._WorldOrigin:FindFirstChild("Locations") and (workspace._WorldOrigin.Locations:FindFirstChild("KitsuneIsland") or workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island")))
+			if kitsuneSpawned then
+				StatusKitsuneIsland.SetText("Kitsune Island: 🟢")
+			else
+				StatusKitsuneIsland.SetText("Kitsune Island: ❌")
 			end
 			if not workspace.Map:FindFirstChild("PrehistoricIsland") then
 				StatusPrehistoricIsland.SetText("Prehistoric Island: \226\157\140")
@@ -12266,13 +12274,11 @@ SettingSeaEventSection.CreateToggle(
 )
 SettingSeaEventSection.CreateToggle(
 	{
-		Title = "Auto Use M1 DragonStorm For Sea Events",
-		Desc = "Shoots Dragonstorm every 2 seconds; Sea Event is not required",
-		Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false,
+		Title = "Auto Click Dragonstorm",
+		Desc = "Simple M1 click every 0.25 seconds; works anywhere",
+		Default = Settings["Auto Click Dragonstorm"] or false,
 	},
-	function(v)
-		SaveSettings("Auto Use M1 DragonStorm For Sea Events", v)
-	end
+	function(v) SaveSettings("Auto Click Dragonstorm", v) end
 )
 
 SettingSeaEventSection.CreateToggle(
@@ -25331,53 +25337,26 @@ __PASS38_NAMED_FUNCTIONS = {
 end)()
 
 
--- Dragonstorm M1: keeps the Sea Event toggle name but works everywhere.
--- Prefer a real part under the mouse; otherwise use the closest live enemy part.
-if not getgenv().__BC_DragonstormM1Fixed then
-	getgenv().__BC_DragonstormM1Fixed = true
-	local function BCDragonstormTarget()
-		local player = game:GetService("Players").LocalPlayer
-		local char = player.Character
-		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if not root then return nil end
-		local mousePart
-		pcall(function() mousePart = player:GetMouse().Target end)
-		if mousePart and mousePart:IsA("BasePart") then return mousePart end
-		local closest, distance = nil, math.huge
-		local enemies = workspace:FindFirstChild("Enemies")
-		if enemies then
-			for _, model in ipairs(enemies:GetChildren()) do
-				local hum = model:FindFirstChildOfClass("Humanoid")
-				local part = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-				if hum and hum.Health > 0 and part then
-					local d = (part.Position - root.Position).Magnitude
-					if d < distance then closest, distance = part, d end
-				end
-			end
-		end
-		return closest
-	end
+-- Simple Dragonstorm M1 clicker: independent of Sea Events and targets.
+if not getgenv().__BC_SimpleDragonstormClick then
+	getgenv().__BC_SimpleDragonstormClick = true
 	task.spawn(function()
-		while task.wait(2) do
+		local vim = game:GetService("VirtualInputManager")
+		while task.wait(0.25) do
 			pcall(function()
-				if not Settings["Auto Use M1 DragonStorm For Sea Events"] then return end
+				if not Settings["Auto Click Dragonstorm"] then return end
 				local player = game:GetService("Players").LocalPlayer
 				local char = player.Character
 				local hum = char and char:FindFirstChildOfClass("Humanoid")
 				if not hum then return end
-				local gun = char:FindFirstChild("Dragonstorm")
-				if not gun then
-					local bagGun = player.Backpack:FindFirstChild("Dragonstorm")
-					if bagGun then hum:EquipTool(bagGun) end
+				local tool = char:FindFirstChild("Dragonstorm")
+				if not tool then
+					local backpackTool = player.Backpack:FindFirstChild("Dragonstorm")
+					if backpackTool then hum:EquipTool(backpackTool) end
 					return
 				end
-				local part = BCDragonstormTarget()
-				if part and getgenv().SpamGunDragonStorm then
-					getgenv().AimPos = CFrame.new(part.Position)
-					SpamGunDragonStorm(part)
-				else
-					gun:Activate()
-				end
+				vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+				vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 			end)
 		end
 	end)
