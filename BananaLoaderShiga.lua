@@ -2143,7 +2143,6 @@ StatusTyrant = SectionStatus.CreateLabel({ Title = "Eyes Summon Tyrant" })
 StatusKatakuri = SectionStatus.CreateLabel({ Title = "Summon Katakuri" })
 Statusspy = SectionStatus.CreateLabel({ Title = "Status SPY" })
 StatusMirage = SectionStatus.CreateLabel({ Title = "Mirage" })
-StatusKitsuneIsland = SectionStatus.CreateLabel({ Title = "Kitsune Island" })
 StatusPrehistoricIsland = SectionStatus.CreateLabel({ Title = "Prehistoric Island" })
 StatusFrozenDimension = SectionStatus.CreateLabel({ Title = "Frozen Dimension" })
 StatusMoon = SectionStatus.CreateLabel({ Title = "Moon" })
@@ -3643,9 +3642,6 @@ spawn(function()
 			else
 				StatusMirage.SetText("Mirage Island: \226\157\140")
 			end
-			local kitsuneSpawned = (workspace.Map and (workspace.Map:FindFirstChild("KitsuneIsland") or workspace.Map:FindFirstChild("Kitsune Island")))
-				or (workspace:FindFirstChild("_WorldOrigin") and workspace._WorldOrigin:FindFirstChild("Locations") and (workspace._WorldOrigin.Locations:FindFirstChild("KitsuneIsland") or workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island")))
-			StatusKitsuneIsland.SetText(kitsuneSpawned and "Kitsune Island: 🟢" or "Kitsune Island: ❌")
 			if not workspace.Map:FindFirstChild("PrehistoricIsland") then
 				StatusPrehistoricIsland.SetText("Prehistoric Island: \226\157\140")
 			else
@@ -12268,15 +12264,6 @@ SettingSeaEventSection.CreateToggle(
 		SaveSettings("Auto Use Dragon Storm For All Sea Events", l)
 	end
 )
-SettingSeaEventSection.CreateToggle(
-	{
-		Title = "Auto Use M1 DragonStorm For Sea Events",
-		Desc = "Adds a real screen M1 every 2 seconds; existing Remote logic is unchanged",
-		Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false,
-	},
-	function(v) SaveSettings("Auto Use M1 DragonStorm For Sea Events", v) end
-)
-
 SettingSeaEventSection.CreateToggle(
 	{
 		Title = "Auto Change Dragonstorm With Skull Guitar",
@@ -25333,24 +25320,18 @@ __PASS38_NAMED_FUNCTIONS = {
 end)()
 
 
--- Screen-click helper only. Existing Dragonstorm remote routines remain unchanged.
-if not getgenv().__BC_DragonstormScreenClick then
-	getgenv().__BC_DragonstormScreenClick = true
-	task.spawn(function()
-		local vu = game:GetService("VirtualUser")
-		while task.wait(2) do pcall(function()
-			if not Settings["Auto Use M1 DragonStorm For Sea Events"] then return end
-			local player = game:GetService("Players").LocalPlayer
-			local char = player.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			if not hum then return end
-			if not char:FindFirstChild("Dragonstorm") then
-				local gun = player.Backpack:FindFirstChild("Dragonstorm")
-				if gun then hum:EquipTool(gun) end
-				return
-			end
-			vu:CaptureController()
-			vu:ClickButton1(Vector2.new(0, 0))
-		end) end
-	end)
+-- Screen M1 only; Dragonstorm Remote routines are not changed.
+if not getgenv().__BCDragonstormScreenClick then
+ getgenv().__BCDragonstormScreenClick=true
+ task.spawn(function()
+  local P=game:GetService("Players"); local VU=game:GetService("VirtualUser"); local VIM=game:GetService("VirtualInputManager")
+  while task.wait(2) do pcall(function()
+   if not Settings["Auto Use M1 DragonStorm For Sea Events"] then return end
+   local p=P.LocalPlayer; local c=p.Character; local h=c and c:FindFirstChildOfClass("Humanoid"); if not h then return end
+   if not c:FindFirstChild("Dragonstorm") then local tool=p.Backpack:FindFirstChild("Dragonstorm"); if tool then h:EquipTool(tool) end; return end
+   local cam=workspace.CurrentCamera; if not cam then return end; local sz=cam.ViewportSize; local x,y=math.floor(sz.X/2),math.floor(sz.Y/2)
+   VIM:SendMouseButtonEvent(x,y,0,true,game,0); task.wait(0.08); VIM:SendMouseButtonEvent(x,y,0,false,game,0)
+   VU:CaptureController(); VU:ClickButton1(Vector2.new(x,y),cam.CFrame)
+  end) end
+ end)
 end
