@@ -1730,7 +1730,7 @@ game:GetService("Players").LocalPlayer.Idled:connect(function()
 end)
 local A =
 	loadstring(game:HttpGet("https://raw.githubusercontent.com/obiiyeuem/vthangsitink/refs/heads/main/zzzz.lua"))()
-Main = A.CreateMain({ Title = "Banana Cat Hub \ By Shigaraki [Beta]", Desc = "By Shigaraki [Beta]" })
+Main = A.CreateMain({ Title = "Banana Cat Hub  By Shigaraki [Beta]", Desc = "By Shigaraki [Beta]" })
 
 PageShop = Main.CreatePage({ Page_Name = "Shop", Page_Title = "Shop" })
 getgenv().Options = A.Options
@@ -2143,6 +2143,7 @@ StatusTyrant = SectionStatus.CreateLabel({ Title = "Eyes Summon Tyrant" })
 StatusKatakuri = SectionStatus.CreateLabel({ Title = "Summon Katakuri" })
 Statusspy = SectionStatus.CreateLabel({ Title = "Status SPY" })
 StatusMirage = SectionStatus.CreateLabel({ Title = "Mirage" })
+StatusKitsuneIsland = SectionStatus.CreateLabel({ Title = "Kitsune Island" })
 StatusPrehistoricIsland = SectionStatus.CreateLabel({ Title = "Prehistoric Island" })
 StatusFrozenDimension = SectionStatus.CreateLabel({ Title = "Frozen Dimension" })
 StatusMoon = SectionStatus.CreateLabel({ Title = "Moon" })
@@ -3641,6 +3642,18 @@ spawn(function()
 				StatusMirage.SetText("Mirage Island: \226\156\133")
 			else
 				StatusMirage.SetText("Mirage Island: \226\157\140")
+			end
+			do
+				local kitsuneOn = false
+				pcall(function()
+					kitsuneOn = workspace.Map:FindFirstChild("KitsuneIsland") ~= nil
+						or workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island") ~= nil
+				end)
+				if kitsuneOn then
+					StatusKitsuneIsland.SetText("Kitsune Island: \240\159\159\162")
+				else
+					StatusKitsuneIsland.SetText("Kitsune Island: \226\157\140")
+				end
 			end
 			if not workspace.Map:FindFirstChild("PrehistoricIsland") then
 				StatusPrehistoricIsland.SetText("Prehistoric Island: \226\157\140")
@@ -6046,21 +6059,80 @@ getgenv().SpamGunDragonStorm = function(E)
 	end)
 end
 GunM1State = { Last = 0 }
+-- Equipa uma tool só quando preciso: se já está na mão não faz nada, e as tentativas
+-- têm intervalo (antes o turbo chamava EquipTool a cada frame e brigava com o farm).
+function EquipOnlyIfNeeded(toolName, interval)
+	local char = t.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not char or not hum or hum.Health <= 0 or hum.Sit or not toolName then
+		return false
+	end
+	if char:FindFirstChild(toolName) then
+		return true -- já equipada
+	end
+	local last = getgenv().__EquipLast or {}
+	getgenv().__EquipLast = last
+	if os.clock() - (last[toolName] or 0) < (interval or 1.5) then
+		return false
+	end
+	local bp = t.Backpack:FindFirstChild(toolName)
+	if not bp then
+		return false
+	end
+	last[toolName] = os.clock()
+	hum:EquipTool(bp)
+	return false -- vai atirar no próximo ciclo
+end
+-- Clique físico da Dragonstorm (centro da tela, a cada 2s): VirtualInputManager como principal
+-- e VirtualUser como reforço. É o MESMO clique usado pelo "Auto Use M1 DragonStorm For Sea Events"
+-- e agora também pelo Farm normal e pelo Auto Use DragonStorm For ALL Sea Event.
+function DragonstormPhysicalClick(force)
+	local now = os.clock()
+	if not force and now - (getgenv().__DSClickLast or 0) < 2 then
+		return false
+	end
+	getgenv().__DSClickLast = now
+	task.spawn(function()
+		pcall(function()
+			local Camera = workspace.CurrentCamera
+			if not Camera then
+				return
+			end
+			local vp = Camera.ViewportSize
+			local x, y = vp.X / 2, vp.Y / 2
+			local VIM = game:GetService("VirtualInputManager")
+			VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
+			task.wait(0.05)
+			VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
+			pcall(function()
+				local VU = game:GetService("VirtualUser")
+				VU:CaptureController()
+				VU:ClickButton1(Vector2.new(x, y))
+			end)
+		end)
+	end)
+	return true
+end
 function ShootM1(E)
 	local char = t.Character
 	if not char or not E then
 		return false
 	end
 	local gunName = NameWeapon("Gun")
+	-- Com o M1 da Dragonstorm ligado, a Gun do farm é a Dragonstorm (e não a primeira Gun achada).
+	if Settings["Auto Use M1 DragonStorm For Sea Events"]
+		and (t.Backpack:FindFirstChild("Dragonstorm") or char:FindFirstChild("Dragonstorm"))
+	then
+		gunName = "Dragonstorm"
+	end
 	local gun = gunName and char:FindFirstChild(gunName)
 	if not gun then
-		-- Gun still in the backpack: equip it and shoot on the next cycle.
-		local bp = gunName and t.Backpack:FindFirstChild(gunName)
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if bp and hum then
-			hum:EquipTool(bp)
-		end
+		-- Gun fora da mão: equipa só quando preciso e atira no próximo ciclo.
+		EquipOnlyIfNeeded(gunName, 1.5)
 		return false
+	end
+	if gunName == "Dragonstorm" then
+		DragonstormPhysicalClick()
 	end
 	-- Target part / position (accepts Model, BasePart, Vector3 or CFrame).
 	local targetPart, targetPos
@@ -6093,6 +6165,7 @@ function ShootM1(E)
 	end
 	GunM1State.Last = now
 	getgenv().AimPos = CFrame.new(targetPos)
+
 
 	if gunName == "Skull Guitar" then
 		local remote = gun:FindFirstChild("RemoteEvent")
@@ -12212,6 +12285,63 @@ SettingSeaEventSection.CreateDropdown(
 )
 SettingSeaEventSection.CreateToggle(
 	{
+		Title = "Auto Use M1 DragonStorm For Sea Events",
+		Desc = "Equips Dragonstorm and taps the screen center every 2s (replaces tapping manually)",
+		Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false,
+	},
+	function(l)
+		SaveSettings("Auto Use M1 DragonStorm For Sea Events", l)
+	end
+)
+-- M1 físico da Dragonstorm: não mexe nos Remotes normais, só faz o toque que você faria na tela.
+getgenv().__DSClickGen = (getgenv().__DSClickGen or 0) + 1
+task.spawn(function()
+	local MyGen = getgenv().__DSClickGen
+	while task.wait(2) and getgenv().__DSClickGen == MyGen do
+		pcall(function()
+			if not Settings["Auto Use M1 DragonStorm For Sea Events"] then
+				return
+			end
+			local Character = t.Character
+			local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+			if not Humanoid or Humanoid.Health <= 0 then
+				return
+			end
+			local Tool = Character:FindFirstChild("Dragonstorm")
+			if not Tool then
+				if not t.Backpack:FindFirstChild("Dragonstorm") then
+					return -- sem Dragonstorm: não clica à toa na tela
+				end
+				-- Só puxa a Dragonstorm quando preciso: se o farm está com outra arma na mão
+				-- (e nenhum modo de Dragonstorm está ligado), não troca de arma.
+				local holding = nil
+				for _, v in ipairs(Character:GetChildren()) do
+					if v:IsA("Tool") then
+						holding = v
+						break
+					end
+				end
+				local dsMode = Settings["Use Dragonstorm For Sea Event"]
+					or Settings["Auto Use Dragon Storm For All Sea Events"]
+					or Settings["Auto Change Dragonstorm With Skull Guitar"]
+					or Settings["Auto Change Dragonstorm When Kill Boat"]
+					or Settings["Kill Aura With DragonStorm"]
+				if holding and not dsMode then
+					return
+				end
+				EquipOnlyIfNeeded("Dragonstorm", 1.5)
+				task.wait(0.3)
+				Tool = Character:FindFirstChild("Dragonstorm")
+				if not Tool then
+					return
+				end
+			end
+			DragonstormPhysicalClick(true)
+		end)
+	end
+end)
+SettingSeaEventSection.CreateToggle(
+	{
 		Title = "Use Dragonstorm For Sea Event",
 		Desc = "Only Farm Boat and Fish and TerrorShark",
 		Default = Settings["Use Dragonstorm For Sea Event"] or false,
@@ -12232,7 +12362,7 @@ SettingSeaEventSection.CreateToggle(
 )
 SettingSeaEventSection.CreateToggle(
 	{
-		Title = "Auto Use Dragon Storm For All Sea Events",
+		Title = "Auto Use DragonStorm For ALL Sea Event",
 		Desc = "Uses only Dragonstorm for every Sea Event (boats, fish, Terrorshark, Sea Beast, Leviathan)",
 		Default = Settings["Auto Use Dragon Storm For All Sea Events"] or false,
 	},
@@ -12856,11 +12986,36 @@ function UseDragonstormAllSeaEvents(Part)
 		end
 		return
 	end
-	equiptool("Dragonstorm")
+	-- Só a Dragonstorm: equipa só quando preciso e nunca puxa outra Gun
+	-- (antes UseSkillGun() equipava a primeira Gun da mochila direto).
+	if not EquipOnlyIfNeeded("Dragonstorm", 1.0) then
+		return
+	end
+	DragonstormPhysicalClick()
 	SpamGunDragonStorm(Part)
 	if t:DistanceFromCharacter(Part.Position) < 400 then
-		UseSkillGun()
+		UseDragonstormSkill()
 	end
+end
+-- Skills só da Dragonstorm (sem equipar nada).
+function UseDragonstormSkill()
+	pcall(function()
+		local tool = t.Character and t.Character:FindFirstChild("Dragonstorm")
+		if not tool or not t.PlayerGui.Main.Skills:FindFirstChild("Dragonstorm") then
+			return
+		end
+		local X = CheckCDSkillTransformation(tool, Settings["Select Skills Gun"] or {})
+		if X then
+			local VIM = game:GetService("VirtualInputManager")
+			VIM:SendKeyEvent(true, X.Name, false, game)
+			if Settings["Use skill fast dont hold"] then
+				task.wait(0.05)
+			else
+				task.wait(tonumber(holdskill) or 0.1)
+			end
+			VIM:SendKeyEvent(false, X.Name, false, game)
+		end
+	end)
 end
 function UseSkillGun()
 	local b = NameWeapon("Gun", true) or false
