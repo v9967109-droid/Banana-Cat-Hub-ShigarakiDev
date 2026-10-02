@@ -3645,11 +3645,7 @@ spawn(function()
 			end
 			local kitsuneSpawned = (workspace.Map and (workspace.Map:FindFirstChild("KitsuneIsland") or workspace.Map:FindFirstChild("Kitsune Island")))
 				or (workspace:FindFirstChild("_WorldOrigin") and workspace._WorldOrigin:FindFirstChild("Locations") and (workspace._WorldOrigin.Locations:FindFirstChild("KitsuneIsland") or workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island")))
-			if kitsuneSpawned then
-				StatusKitsuneIsland.SetText("Kitsune Island: 🟢")
-			else
-				StatusKitsuneIsland.SetText("Kitsune Island: ❌")
-			end
+			StatusKitsuneIsland.SetText(kitsuneSpawned and "Kitsune Island: 🟢" or "Kitsune Island: ❌")
 			if not workspace.Map:FindFirstChild("PrehistoricIsland") then
 				StatusPrehistoricIsland.SetText("Prehistoric Island: \226\157\140")
 			else
@@ -12274,11 +12270,11 @@ SettingSeaEventSection.CreateToggle(
 )
 SettingSeaEventSection.CreateToggle(
 	{
-		Title = "Auto Click Dragonstorm",
-		Desc = "Simple M1 click every 0.25 seconds; works anywhere",
-		Default = Settings["Auto Click Dragonstorm"] or false,
+		Title = "Auto Use M1 DragonStorm For Sea Events",
+		Desc = "Adds a real screen M1 every 2 seconds; existing Remote logic is unchanged",
+		Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false,
 	},
-	function(v) SaveSettings("Auto Click Dragonstorm", v) end
+	function(v) SaveSettings("Auto Use M1 DragonStorm For Sea Events", v) end
 )
 
 SettingSeaEventSection.CreateToggle(
@@ -25337,27 +25333,24 @@ __PASS38_NAMED_FUNCTIONS = {
 end)()
 
 
--- Simple Dragonstorm M1 clicker: independent of Sea Events and targets.
-if not getgenv().__BC_SimpleDragonstormClick then
-	getgenv().__BC_SimpleDragonstormClick = true
+-- Screen-click helper only. Existing Dragonstorm remote routines remain unchanged.
+if not getgenv().__BC_DragonstormScreenClick then
+	getgenv().__BC_DragonstormScreenClick = true
 	task.spawn(function()
-		local vim = game:GetService("VirtualInputManager")
-		while task.wait(0.25) do
-			pcall(function()
-				if not Settings["Auto Click Dragonstorm"] then return end
-				local player = game:GetService("Players").LocalPlayer
-				local char = player.Character
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				if not hum then return end
-				local tool = char:FindFirstChild("Dragonstorm")
-				if not tool then
-					local backpackTool = player.Backpack:FindFirstChild("Dragonstorm")
-					if backpackTool then hum:EquipTool(backpackTool) end
-					return
-				end
-				vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-				vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-			end)
-		end
+		local vu = game:GetService("VirtualUser")
+		while task.wait(2) do pcall(function()
+			if not Settings["Auto Use M1 DragonStorm For Sea Events"] then return end
+			local player = game:GetService("Players").LocalPlayer
+			local char = player.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if not hum then return end
+			if not char:FindFirstChild("Dragonstorm") then
+				local gun = player.Backpack:FindFirstChild("Dragonstorm")
+				if gun then hum:EquipTool(gun) end
+				return
+			end
+			vu:CaptureController()
+			vu:ClickButton1(Vector2.new(0, 0))
+		end) end
 	end)
 end
