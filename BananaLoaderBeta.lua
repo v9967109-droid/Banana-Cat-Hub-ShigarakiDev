@@ -5937,6 +5937,18 @@ function M1Dispatch(E, l, Weapon)
 	end
 	return true
 end
+-- Normal Farm M1 is activated directly by the equipped Tool; no mouse input is used.
+local function InternalFarmToolActivate()
+	local Character = t.Character
+	if not Character then return false end
+	for _, Item in ipairs(Character:GetChildren()) do
+		if Item:IsA("Tool") then
+			Item:Activate()
+			return true
+		end
+	end
+	return false
+end
 getgenv().ClickM1 = function(E, l)
 	if M1Dispatch(E, l, Settings["Select Weapon"]) then
 		return
@@ -5944,7 +5956,7 @@ getgenv().ClickM1 = function(E, l)
 	if not m(E) then
 		return
 	end
-	AttackFunction(l and 80 or 30)
+	InternalFarmToolActivate()
 end
 getgenv().ClickM1Dungeon = function(E, l)
 	if M1Dispatch(E, l, Settings["Select Weapon Dungeon"]) then
@@ -12267,7 +12279,7 @@ SettingSeaEventSection.CreateToggle(
 SettingSeaEventSection.CreateToggle(
 	{
 		Title = "Auto Activate Dragonstorm (2 Seconds)",
-		Desc = "Activates Dragonstorm internally every 2 seconds without moving or clicking the screen mouse",
+		Desc = "Activates Dragonstorm internally every 2 seconds without using the screen mouse",
 		Default = Settings["Auto Activate Dragonstorm Every 2 Seconds"] or false,
 	},
 	function(l)
@@ -12897,8 +12909,7 @@ function UseDragonstormAllSeaEvents(Part)
 	end
 end
 
--- Internal Dragonstorm activation worker. It never moves or clicks the screen cursor.
--- Tool:Activate() fires the equipped Dragonstorm tool directly and keeps running during Sea Event skills.
+-- Dragonstorm activation uses Tool:Activate(), never a physical/virtual screen mouse click.
 getgenv().DragonstormInternalActivateWorker = getgenv().DragonstormInternalActivateWorker or false
 if not getgenv().DragonstormInternalActivateWorker then
 	getgenv().DragonstormInternalActivateWorker = true
@@ -12908,9 +12919,7 @@ if not getgenv().DragonstormInternalActivateWorker then
 				if not Settings["Auto Activate Dragonstorm Every 2 Seconds"] then return end
 				local Character = t.Character
 				local Dragonstorm = Character and Character:FindFirstChild("Dragonstorm")
-				if Dragonstorm and Dragonstorm:IsA("Tool") then
-					Dragonstorm:Activate()
-				end
+				if Dragonstorm and Dragonstorm:IsA("Tool") then Dragonstorm:Activate() end
 			end)
 		end
 	end)
