@@ -2143,7 +2143,6 @@ StatusTyrant = SectionStatus.CreateLabel({ Title = "Eyes Summon Tyrant" })
 StatusKatakuri = SectionStatus.CreateLabel({ Title = "Summon Katakuri" })
 Statusspy = SectionStatus.CreateLabel({ Title = "Status SPY" })
 StatusMirage = SectionStatus.CreateLabel({ Title = "Mirage" })
-StatusKitsuneIsland = SectionStatus.CreateLabel({ Title = "Kitsune Island: \226\157\140" })
 StatusPrehistoricIsland = SectionStatus.CreateLabel({ Title = "Prehistoric Island" })
 StatusFrozenDimension = SectionStatus.CreateLabel({ Title = "Frozen Dimension" })
 StatusMoon = SectionStatus.CreateLabel({ Title = "Moon" })
@@ -3643,7 +3642,6 @@ spawn(function()
 			else
 				StatusMirage.SetText("Mirage Island: \226\157\140")
 			end
-			if StatusKitsuneIsland then StatusKitsuneIsland.SetText(workspace.Map:FindFirstChild("KitsuneIsland") and "Kitsune Island: \226\156\133" or "Kitsune Island: \226\157\140") end
 			if not workspace.Map:FindFirstChild("PrehistoricIsland") then
 				StatusPrehistoricIsland.SetText("Prehistoric Island: \226\157\140")
 			else
@@ -12266,7 +12264,11 @@ SettingSeaEventSection.CreateToggle(
 		SaveSettings("Auto Use Dragon Storm For All Sea Events", l)
 	end
 )
-SettingSeaEventSection.CreateToggle({ Title = "Auto Use M1 DragonStorm For Sea Events", Desc = "Fires Dragonstorm M1 at the current Sea Event target every 2 seconds", Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false }, function(l) SaveSettings("Auto Use M1 DragonStorm For Sea Events", l) end)
+SettingSeaEventSection.CreateToggle(
+	{ Title = "Auto Use M1 DragonStorm For Sea Events", Desc = "Activates Dragonstorm every 2 seconds anywhere", Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false },
+	function(v) SaveSettings("Auto Use M1 DragonStorm For Sea Events", v) end
+)
+
 SettingSeaEventSection.CreateToggle(
 	{
 		Title = "Auto Change Dragonstorm With Skull Guitar",
@@ -12888,30 +12890,6 @@ function UseDragonstormAllSeaEvents(Part)
 	if t:DistanceFromCharacter(Part.Position) < 400 then
 		UseSkillGun()
 	end
-end
-
--- Fixed M1: uses the source's actual Dragonstorm gun remote on the detected Sea Event target.
-getgenv().DragonstormSeaM1FixedWorker = getgenv().DragonstormSeaM1FixedWorker or false
-if not getgenv().DragonstormSeaM1FixedWorker then
-	getgenv().DragonstormSeaM1FixedWorker = true
-	task.spawn(function()
-		while task.wait(2) do
-			pcall(function()
-				if not Settings["Auto Use M1 DragonStorm For Sea Events"] then return end
-				local Target = DetectSeaEvents and DetectSeaEvents()
-				if not Target then return end
-				local Part = Target:FindFirstChild("HumanoidRootPart") or Target:FindFirstChild("Engine") or Target.PrimaryPart
-				if not Part then return end
-				local Character = t.Character
-				if not (Character and Character:FindFirstChild("Dragonstorm")) then
-					if CheckItemInventory("Dragonstorm") then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LoadItem", "Dragonstorm") end
-					return
-				end
-				equiptool("Dragonstorm")
-				SpamGunDragonStorm(Part)
-			end)
-		end
-	end)
 end
 function UseSkillGun()
 	local b = NameWeapon("Gun", true) or false
@@ -25345,3 +25323,14 @@ __PASS38_NAMED_FUNCTIONS = {
         if type(__fn) == "function" then rawset(_G, __name, __fn) end
     end
 end)()
+
+if not getgenv().__BC_DragonstormM1_Anywhere then
+ getgenv().__BC_DragonstormM1_Anywhere=true
+ task.spawn(function() while task.wait(2) do pcall(function()
+  if not Settings["Auto Use M1 DragonStorm For Sea Events"] then return end
+  local p=game:GetService("Players").LocalPlayer; local c=p.Character; local h=c and c:FindFirstChildOfClass("Humanoid"); if not h then return end
+  local d=c:FindFirstChild("Dragonstorm")
+  if not d then local x=p.Backpack:FindFirstChild("Dragonstorm"); if x then h:EquipTool(x) end; return end
+  if d:IsA("Tool") then d:Activate() end
+ end) end end)
+end
