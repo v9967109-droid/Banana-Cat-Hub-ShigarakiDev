@@ -2143,7 +2143,7 @@ StatusTyrant = SectionStatus.CreateLabel({ Title = "Eyes Summon Tyrant" })
 StatusKatakuri = SectionStatus.CreateLabel({ Title = "Summon Katakuri" })
 Statusspy = SectionStatus.CreateLabel({ Title = "Status SPY" })
 StatusMirage = SectionStatus.CreateLabel({ Title = "Mirage" })
-StatusKitsuneIsland = SectionStatus.CreateLabel({ Title = "Kitsune Island: ❌" })
+StatusKitsuneIsland = SectionStatus.CreateLabel({ Title = "Kitsune Island: \226\157\140" })
 StatusPrehistoricIsland = SectionStatus.CreateLabel({ Title = "Prehistoric Island" })
 StatusFrozenDimension = SectionStatus.CreateLabel({ Title = "Frozen Dimension" })
 StatusMoon = SectionStatus.CreateLabel({ Title = "Moon" })
@@ -3642,6 +3642,9 @@ spawn(function()
 				StatusMirage.SetText("Mirage Island: \226\156\133")
 			else
 				StatusMirage.SetText("Mirage Island: \226\157\140")
+			end
+			if StatusKitsuneIsland then
+				StatusKitsuneIsland.SetText(workspace.Map:FindFirstChild("KitsuneIsland") and "Kitsune Island: \226\156\133" or "Kitsune Island: \226\157\140")
 			end
 			if not workspace.Map:FindFirstChild("PrehistoricIsland") then
 				StatusPrehistoricIsland.SetText("Prehistoric Island: \226\157\140")
@@ -12257,13 +12260,17 @@ SettingSeaEventSection.CreateToggle(
 )
 SettingSeaEventSection.CreateToggle(
 	{
-		Title = "Use M1 DragonStorm Clicking For Sea Events",
+		Title = "Auto Use Dragon Storm For All Sea Events",
 		Desc = "Uses only Dragonstorm for every Sea Event (boats, fish, Terrorshark, Sea Beast, Leviathan)",
-		Default = Settings["Use M1 DragonStorm Clicking For Sea Events"] or false,
+		Default = Settings["Auto Use Dragon Storm For All Sea Events"] or false,
 	},
 	function(l)
 		SaveSettings("Auto Use Dragon Storm For All Sea Events", l)
 	end
+)
+SettingSeaEventSection.CreateToggle(
+	{ Title = "Use M1 DragonStorm Clicking For Sea Events", Desc = "Runs only while Auto Sea Event has a target", Default = Settings["Use M1 DragonStorm Clicking For Sea Events"] or false },
+	function(l) SaveSettings("Use M1 DragonStorm Clicking For Sea Events", l) end
 )
 SettingSeaEventSection.CreateToggle(
 	{
@@ -12887,6 +12894,22 @@ function UseDragonstormAllSeaEvents(Part)
 		UseSkillGun()
 	end
 end
+
+getgenv().SeaEventDragonstormM1Worker = getgenv().SeaEventDragonstormM1Worker or false
+if not getgenv().SeaEventDragonstormM1Worker then
+	getgenv().SeaEventDragonstormM1Worker = true
+	task.spawn(function()
+		while task.wait(2) do
+			pcall(function()
+				if not Settings["Use M1 DragonStorm Clicking For Sea Events"] or not Settings["Auto Sea Event"] then return end
+				local Target = DetectSeaEvents and DetectSeaEvents()
+				local Character = t.Character
+				local Dragonstorm = Character and Character:FindFirstChild("Dragonstorm")
+				if Target and Dragonstorm and Dragonstorm:IsA("Tool") then Dragonstorm:Activate() end
+			end)
+		end
+	end)
+end
 function UseSkillGun()
 	local b = NameWeapon("Gun", true) or false
 	if b and not game:GetService("Players").LocalPlayer.PlayerGui.Main.Skills:FindFirstChild(b.Name) then
@@ -13012,7 +13035,7 @@ function AutoSeabeast()
 			task.wait()
 			TeleportSeaEvents(b)
 			if b:FindFirstChildWhichIsA("Humanoid") then
-				if Settings["Use M1 DragonStorm Clicking For Sea Events"] then
+				if Settings["Auto Use Dragon Storm For All Sea Events"] then
 					UseDragonstormAllSeaEvents(b.HumanoidRootPart)
 				elseif Settings["Use Dragonstorm For Sea Event"] then
 					if Settings["Auto Change Dragonstorm With Skull Guitar"] then
@@ -25319,54 +25342,3 @@ __PASS38_NAMED_FUNCTIONS = {
         if type(__fn) == "function" then rawset(_G, __name, __fn) end
     end
 end)()
-
-
--- Complete stability layer: status, Dragonstorm aura, Elite Hunter and inventory mastery/upgrade support.
-task.spawn(function()
- while task.wait(1) do pcall(function()
-  if StatusKitsuneIsland and StatusKitsuneIsland.SetText then
-   StatusKitsuneIsland:SetText(workspace.Map:FindFirstChild("KitsuneIsland") and "Kitsune Island: ✅" or "Kitsune Island: ❌")
-  end
- end) end
-end)
-local function BCNearestEnemy(range)
- local root=t.Character and t.Character:FindFirstChild("HumanoidRootPart")
- if not root then return nil end
- local best,dist=nil,range or 300
- for _,mob in ipairs(workspace.Enemies:GetChildren()) do
-  local hum=mob:FindFirstChildOfClass("Humanoid"); local part=mob:FindFirstChild("HumanoidRootPart") or mob.PrimaryPart
-  if hum and hum.Health>0 and part then local d=(part.Position-root.Position).Magnitude if d<dist then best,dist=mob,d end end
- end
- return best
-end
-task.spawn(function()
- while task.wait(.15) do pcall(function()
-  if Settings["Kill Aura With DragonStorm"] then
-   local char=t.Character; local gun=char and char:FindFirstChild("Dragonstorm")
-   if not gun and CheckItemInventory("Dragonstorm") then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LoadItem","Dragonstorm") return end
-   local target=BCNearestEnemy(150)
-   if gun and target then local part=target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart; if part then SpamGunDragonStorm(part); gun:Activate() end end
-  end
- end) end
-end)
-task.spawn(function()
- while task.wait(.35) do pcall(function()
-  if Settings["Auto Elite Hunter"] then
-   local elite=DetectEliteHunter and DetectEliteHunter()
-   if not elite then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("EliteHunter") return end
-   local part=elite:FindFirstChild("HumanoidRootPart")
-   if part then toTarget(part.CFrame*CFrame.new(0,20,0)); ClickM1(elite) end
-  end
- end) end
-end)
-task.spawn(function()
- while task.wait(.5) do pcall(function()
-  if Settings["Auto Farm Mastery 600 Melees"] then
-   local name=DetectMeleeFarmMastery and DetectMeleeFarmMastery()
-   if name then
-    if not (t.Character:FindFirstChild(name) or t.Backpack:FindFirstChild(name)) then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("Buy"..name:gsub(" ","")) else game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LoadItem",name); SaveSettings("Farm Mastery",true) end
-   end
-  end
-  if Settings["Auto Farm Mastery 600 Sword In Inventory"] then local name=DetectSwordUnlock and DetectSwordUnlock(); if name then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LoadItem",name); SaveSettings("Farm Mastery",true) end end
- end) end
-end)
