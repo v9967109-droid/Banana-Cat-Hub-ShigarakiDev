@@ -1730,7 +1730,7 @@ game:GetService("Players").LocalPlayer.Idled:connect(function()
 end)
 local A =
 	loadstring(game:HttpGet("https://raw.githubusercontent.com/obiiyeuem/vthangsitink/refs/heads/main/zzzz.lua"))()
-Main = A.CreateMain({ Title = "Banana Cat Hub \ By Shigaraki [Beta]", Desc = "By Shigaraki [Beta]" })
+Main = A.CreateMain({ Title = "Banana Cat Hub  By Shigaraki [Beta]", Desc = "By Shigaraki [Beta]" })
 
 PageShop = Main.CreatePage({ Page_Name = "Shop", Page_Title = "Shop" })
 getgenv().Options = A.Options
@@ -2143,6 +2143,7 @@ StatusTyrant = SectionStatus.CreateLabel({ Title = "Eyes Summon Tyrant" })
 StatusKatakuri = SectionStatus.CreateLabel({ Title = "Summon Katakuri" })
 Statusspy = SectionStatus.CreateLabel({ Title = "Status SPY" })
 StatusMirage = SectionStatus.CreateLabel({ Title = "Mirage" })
+StatusKitsuneIsland = SectionStatus.CreateLabel({ Title = "Kitsune Island" })
 StatusPrehistoricIsland = SectionStatus.CreateLabel({ Title = "Prehistoric Island" })
 StatusFrozenDimension = SectionStatus.CreateLabel({ Title = "Frozen Dimension" })
 StatusMoon = SectionStatus.CreateLabel({ Title = "Moon" })
@@ -3641,6 +3642,18 @@ spawn(function()
 				StatusMirage.SetText("Mirage Island: \226\156\133")
 			else
 				StatusMirage.SetText("Mirage Island: \226\157\140")
+			end
+			do
+				local kitsuneOn = false
+				pcall(function()
+					kitsuneOn = workspace.Map:FindFirstChild("KitsuneIsland") ~= nil
+						or workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island") ~= nil
+				end)
+				if kitsuneOn then
+					StatusKitsuneIsland.SetText("Kitsune Island: \240\159\159\162")
+				else
+					StatusKitsuneIsland.SetText("Kitsune Island: \226\157\140")
+				end
 			end
 			if not workspace.Map:FindFirstChild("PrehistoricIsland") then
 				StatusPrehistoricIsland.SetText("Prehistoric Island: \226\157\140")
@@ -5937,18 +5950,6 @@ function M1Dispatch(E, l, Weapon)
 	end
 	return true
 end
--- Normal Farm M1 is activated directly by the equipped Tool; no mouse input is used.
-local function InternalFarmToolActivate()
-	local Character = t.Character
-	if not Character then return false end
-	for _, Item in ipairs(Character:GetChildren()) do
-		if Item:IsA("Tool") then
-			Item:Activate()
-			return true
-		end
-	end
-	return false
-end
 getgenv().ClickM1 = function(E, l)
 	if M1Dispatch(E, l, Settings["Select Weapon"]) then
 		return
@@ -5956,7 +5957,7 @@ getgenv().ClickM1 = function(E, l)
 	if not m(E) then
 		return
 	end
-	InternalFarmToolActivate()
+	AttackFunction(l and 80 or 30)
 end
 getgenv().ClickM1Dungeon = function(E, l)
 	if M1Dispatch(E, l, Settings["Select Weapon Dungeon"]) then
@@ -6106,29 +6107,6 @@ function ShootM1(E)
 	GunM1State.Last = now
 	getgenv().AimPos = CFrame.new(targetPos)
 
-	-- Clique real na tela a cada 2 segundos (no alvo, ou no centro se o alvo estiver fora da tela).
-	-- Ajuste o intervalo com getgenv().GunClickInterval (segundos).
-	if now - (getgenv().__GunClickLast or 0) >= (getgenv().GunClickInterval or 2) then
-		getgenv().__GunClickLast = now
-		task.spawn(function()
-			pcall(function()
-				local Camera = workspace.CurrentCamera
-				if not Camera then
-					return
-				end
-				local vp = Camera.ViewportSize
-				local x, y = vp.X / 2, vp.Y / 2
-				local pos, onScreen = Camera:WorldToScreenPoint(targetPos)
-				if onScreen then
-					x, y = pos.X, pos.Y
-				end
-				local VIM = game:GetService("VirtualInputManager")
-				VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
-				task.wait(0.05)
-				VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
-			end)
-		end)
-	end
 
 	if gunName == "Skull Guitar" then
 		local remote = gun:FindFirstChild("RemoteEvent")
@@ -12248,6 +12226,59 @@ SettingSeaEventSection.CreateDropdown(
 )
 SettingSeaEventSection.CreateToggle(
 	{
+		Title = "Auto Use M1 DragonStorm For Sea Events",
+		Desc = "Equips Dragonstorm and taps the screen center every 2s (replaces tapping manually)",
+		Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false,
+	},
+	function(l)
+		SaveSettings("Auto Use M1 DragonStorm For Sea Events", l)
+	end
+)
+-- M1 físico da Dragonstorm: não mexe nos Remotes normais, só faz o toque que você faria na tela.
+getgenv().__DSClickGen = (getgenv().__DSClickGen or 0) + 1
+task.spawn(function()
+	local MyGen = getgenv().__DSClickGen
+	while task.wait(2) and getgenv().__DSClickGen == MyGen do
+		pcall(function()
+			if not Settings["Auto Use M1 DragonStorm For Sea Events"] then
+				return
+			end
+			local Character = t.Character
+			local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+			if not Humanoid or Humanoid.Health <= 0 then
+				return
+			end
+			local Tool = Character:FindFirstChild("Dragonstorm")
+			if not Tool then
+				local InBackpack = t.Backpack:FindFirstChild("Dragonstorm")
+				if not InBackpack then
+					return -- sem Dragonstorm: não clica à toa na tela
+				end
+				Humanoid:EquipTool(InBackpack)
+				task.wait(0.3)
+			end
+			local Camera = workspace.CurrentCamera
+			if not Camera then
+				return
+			end
+			local vp = Camera.ViewportSize
+			local x, y = vp.X / 2, vp.Y / 2
+			-- Clique principal: VirtualInputManager.
+			local VIM = game:GetService("VirtualInputManager")
+			VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
+			task.wait(0.05)
+			VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
+			-- Reforço: VirtualUser.
+			pcall(function()
+				local VU = game:GetService("VirtualUser")
+				VU:CaptureController()
+				VU:ClickButton1(Vector2.new(x, y))
+			end)
+		end)
+	end
+end)
+SettingSeaEventSection.CreateToggle(
+	{
 		Title = "Use Dragonstorm For Sea Event",
 		Desc = "Only Farm Boat and Fish and TerrorShark",
 		Default = Settings["Use Dragonstorm For Sea Event"] or false,
@@ -12268,22 +12299,12 @@ SettingSeaEventSection.CreateToggle(
 )
 SettingSeaEventSection.CreateToggle(
 	{
-		Title = "Auto Use Dragon Storm For All Sea Events",
+		Title = "Auto Use DragonStorm For ALL Sea Event",
 		Desc = "Uses only Dragonstorm for every Sea Event (boats, fish, Terrorshark, Sea Beast, Leviathan)",
 		Default = Settings["Auto Use Dragon Storm For All Sea Events"] or false,
 	},
 	function(l)
 		SaveSettings("Auto Use Dragon Storm For All Sea Events", l)
-	end
-)
-SettingSeaEventSection.CreateToggle(
-	{
-		Title = "Auto Activate Dragonstorm (2 Seconds)",
-		Desc = "Activates Dragonstorm internally every 2 seconds without using the screen mouse",
-		Default = Settings["Auto Activate Dragonstorm Every 2 Seconds"] or false,
-	},
-	function(l)
-		SaveSettings("Auto Activate Dragonstorm Every 2 Seconds", l)
 	end
 )
 SettingSeaEventSection.CreateToggle(
@@ -12907,22 +12928,6 @@ function UseDragonstormAllSeaEvents(Part)
 	if t:DistanceFromCharacter(Part.Position) < 400 then
 		UseSkillGun()
 	end
-end
-
--- Dragonstorm activation uses Tool:Activate(), never a physical/virtual screen mouse click.
-getgenv().DragonstormInternalActivateWorker = getgenv().DragonstormInternalActivateWorker or false
-if not getgenv().DragonstormInternalActivateWorker then
-	getgenv().DragonstormInternalActivateWorker = true
-	task.spawn(function()
-		while task.wait(2) do
-			pcall(function()
-				if not Settings["Auto Activate Dragonstorm Every 2 Seconds"] then return end
-				local Character = t.Character
-				local Dragonstorm = Character and Character:FindFirstChild("Dragonstorm")
-				if Dragonstorm and Dragonstorm:IsA("Tool") then Dragonstorm:Activate() end
-			end)
-		end
-	end)
 end
 function UseSkillGun()
 	local b = NameWeapon("Gun", true) or false
