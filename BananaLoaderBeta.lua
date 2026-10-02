@@ -12266,12 +12266,12 @@ SettingSeaEventSection.CreateToggle(
 )
 SettingSeaEventSection.CreateToggle(
 	{
-		Title = "Auto Click Dragonstorm (2 Seconds)",
-		Desc = "Clicks the bottom-right corner every 2 seconds while Dragonstorm is equipped, including during Sea Event skills",
-		Default = Settings["Auto Click Dragonstorm Every 2 Seconds"] or false,
+		Title = "Auto Activate Dragonstorm (2 Seconds)",
+		Desc = "Activates Dragonstorm internally every 2 seconds without moving or clicking the screen mouse",
+		Default = Settings["Auto Activate Dragonstorm Every 2 Seconds"] or false,
 	},
 	function(l)
-		SaveSettings("Auto Click Dragonstorm Every 2 Seconds", l)
+		SaveSettings("Auto Activate Dragonstorm Every 2 Seconds", l)
 	end
 )
 SettingSeaEventSection.CreateToggle(
@@ -12897,23 +12897,20 @@ function UseDragonstormAllSeaEvents(Part)
 	end
 end
 
--- Independent Dragonstorm M1 worker: continues while Sea Event code casts skills.
-getgenv().DragonstormCornerClickWorker = getgenv().DragonstormCornerClickWorker or false
-if not getgenv().DragonstormCornerClickWorker then
-	getgenv().DragonstormCornerClickWorker = true
+-- Internal Dragonstorm activation worker. It never moves or clicks the screen cursor.
+-- Tool:Activate() fires the equipped Dragonstorm tool directly and keeps running during Sea Event skills.
+getgenv().DragonstormInternalActivateWorker = getgenv().DragonstormInternalActivateWorker or false
+if not getgenv().DragonstormInternalActivateWorker then
+	getgenv().DragonstormInternalActivateWorker = true
 	task.spawn(function()
-		local VirtualInputManager = game:GetService("VirtualInputManager")
 		while task.wait(2) do
 			pcall(function()
-				if not Settings["Auto Click Dragonstorm Every 2 Seconds"] then return end
+				if not Settings["Auto Activate Dragonstorm Every 2 Seconds"] then return end
 				local Character = t.Character
-				if not Character or not Character:FindFirstChild("Dragonstorm") then return end
-				local Camera = workspace.CurrentCamera
-				if not Camera then return end
-				local Viewport = Camera.ViewportSize
-				local X, Y = math.max(1, Viewport.X - 5), math.max(1, Viewport.Y - 5)
-				VirtualInputManager:SendMouseButtonEvent(X, Y, 0, true, game, 0)
-				VirtualInputManager:SendMouseButtonEvent(X, Y, 0, false, game, 0)
+				local Dragonstorm = Character and Character:FindFirstChild("Dragonstorm")
+				if Dragonstorm and Dragonstorm:IsA("Tool") then
+					Dragonstorm:Activate()
+				end
 			end)
 		end
 	end)
