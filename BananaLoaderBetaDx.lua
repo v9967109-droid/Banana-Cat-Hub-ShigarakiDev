@@ -2143,7 +2143,6 @@ StatusTyrant = SectionStatus.CreateLabel({ Title = "Eyes Summon Tyrant" })
 StatusKatakuri = SectionStatus.CreateLabel({ Title = "Summon Katakuri" })
 Statusspy = SectionStatus.CreateLabel({ Title = "Status SPY" })
 StatusMirage = SectionStatus.CreateLabel({ Title = "Mirage" })
-StatusKitsuneIsland = SectionStatus.CreateLabel({ Title = "Kitsune Island: \226\157\140" })
 StatusPrehistoricIsland = SectionStatus.CreateLabel({ Title = "Prehistoric Island" })
 StatusFrozenDimension = SectionStatus.CreateLabel({ Title = "Frozen Dimension" })
 StatusMoon = SectionStatus.CreateLabel({ Title = "Moon" })
@@ -3642,9 +3641,6 @@ spawn(function()
 				StatusMirage.SetText("Mirage Island: \226\156\133")
 			else
 				StatusMirage.SetText("Mirage Island: \226\157\140")
-			end
-			if StatusKitsuneIsland then
-				StatusKitsuneIsland.SetText(workspace.Map:FindFirstChild("KitsuneIsland") and "Kitsune Island: \226\156\133" or "Kitsune Island: \226\157\140")
 			end
 			if not workspace.Map:FindFirstChild("PrehistoricIsland") then
 				StatusPrehistoricIsland.SetText("Prehistoric Island: \226\157\140")
@@ -12269,8 +12265,8 @@ SettingSeaEventSection.CreateToggle(
 	end
 )
 SettingSeaEventSection.CreateToggle(
-	{ Title = "Use M1 DragonStorm Clicking For Sea Events", Desc = "Runs only while Auto Sea Event has a target", Default = Settings["Use M1 DragonStorm Clicking For Sea Events"] or false },
-	function(l) SaveSettings("Use M1 DragonStorm Clicking For Sea Events", l) end
+	{ Title = "Auto Use M1 DragonStorm For Sea Events", Desc = "Uses Dragonstorm M1 every 2 seconds while Dragonstorm is equipped", Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false },
+	function(l) SaveSettings("Auto Use M1 DragonStorm For Sea Events", l) end
 )
 SettingSeaEventSection.CreateToggle(
 	{
@@ -12895,17 +12891,17 @@ function UseDragonstormAllSeaEvents(Part)
 	end
 end
 
-getgenv().SeaEventDragonstormM1Worker = getgenv().SeaEventDragonstormM1Worker or false
-if not getgenv().SeaEventDragonstormM1Worker then
-	getgenv().SeaEventDragonstormM1Worker = true
+-- Restored M1 behavior: runs every 2 seconds whenever Dragonstorm is equipped.
+getgenv().DragonstormM1Worker = getgenv().DragonstormM1Worker or false
+if not getgenv().DragonstormM1Worker then
+	getgenv().DragonstormM1Worker = true
 	task.spawn(function()
 		while task.wait(2) do
 			pcall(function()
-				if not Settings["Use M1 DragonStorm Clicking For Sea Events"] or not Settings["Auto Sea Event"] then return end
-				local Target = DetectSeaEvents and DetectSeaEvents()
+				if not Settings["Auto Use M1 DragonStorm For Sea Events"] then return end
 				local Character = t.Character
 				local Dragonstorm = Character and Character:FindFirstChild("Dragonstorm")
-				if Target and Dragonstorm and Dragonstorm:IsA("Tool") then Dragonstorm:Activate() end
+				if Dragonstorm and Dragonstorm:IsA("Tool") then Dragonstorm:Activate() end
 			end)
 		end
 	end)
