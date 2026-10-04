@@ -5374,7 +5374,9 @@ do
 		["Castle>Mansion"] = Vector3.new(-4967.6826171875, 314.88238525390625, -3157.098388671875),
 		["Castle>Tiki"] = Vector3.new(-4967.6826171875, 314.88238525390625, -3157.098388671875),
 		["Hydra>Castle"] = Vector3.new(5661.5302734375, 1013.4113159179688, -334.9619140625),
-		["Mansion>Castle"] = Vector3.new(-12463.8740234375, 374.9144592285156, -7523.77392578125),
+		-- Portal físico real dentro da Mansion/Floating Turtle (balcão interno).
+		-- Coordenada usada apenas como ponto verificado do portal, nunca como destino de ilha.
+		["Mansion>Castle"] = Vector3.new(-12471, 374, -7551),
 		["Tiki>Castle"] = Vector3.new(-16455.29, 527.75, 436.11),
 	}
 	local function lower(x)
@@ -5496,6 +5498,21 @@ do
 			BP.Cache[key] = { part = best.part, t = tick() }
 			return best.part.Position, "mapa"
 		end
+
+		-- A Mansion é um caso especial: o portal fica no interior do prédio e
+		-- em algumas versões os objetos do portal não expõem nome/TouchInterest
+		-- de forma detectável. O ponto abaixo é o ponto físico conhecido do portal.
+		-- Não é um fallback de teleporte: o jogador ainda precisa entrar no portal.
+		if key == "Mansion>Castle" and typeof(known) == "Vector3" then
+			BP.Cache[key] = { point = known, t = tick() }
+			return known, "portal-fisico"
+		end
+
+		if typeof(known) == "Vector3" then
+			BP.Cache[key] = { point = known, t = tick() }
+			return known, "portal-fisico"
+		end
+
 		BP.Cache[key] = { none = true, t = tick() }
 		return nil, "nenhuma"
 	end
@@ -5693,6 +5710,46 @@ function toTarget(P, e)
 				end
 				getgenv().noclip = true
 
+				local function touchPhysicalPortal(position, routeKey)
+					local cache = BP.Cache and BP.Cache[routeKey]
+					local preferred = cache and cache.part
+					local parts = {}
+					if preferred and preferred.Parent then
+						parts[#parts + 1] = preferred
+					end
+					local overlap = OverlapParams.new()
+					overlap.FilterType = Enum.RaycastFilterType.Include
+					local map = workspace:FindFirstChild("Map")
+					if map then
+						overlap.FilterDescendantsInstances = { map }
+						pcall(function()
+							for _, part in ipairs(workspace:GetPartBoundsInRadius(position, 18, overlap)) do
+								if part:IsA("BasePart") then
+									local tags = string.lower(tostring(part.Name)) .. " " .. string.lower(tostring(part.Parent and part.Parent.Name or ""))
+									if string.find(tags, "portal", 1, true) or string.find(tags, "indra", 1, true) or part:FindFirstChild("TouchInterest") then
+										parts[#parts + 1] = part
+									end
+								end
+							end
+						end)
+					end
+					local fired = false
+					for _, part in ipairs(parts) do
+						if part and part.Parent then
+							local touchFn = firetouchinterest
+							if touchFn then
+								pcall(function()
+									touchFn(root, part, 0)
+									task.wait(0.05)
+									touchFn(root, part, 1)
+								end)
+								fired = true
+							end
+						end
+					end
+					return fired
+				end
+
 				-- 1) Vai até o portal que leva para `nextIsland`.
 				if (root.Position - pad).Magnitude > 6 then
 					B(root, CFrame.new(pad), 300, 3)
@@ -5703,18 +5760,7 @@ function toTarget(P, e)
 				TweenManager.CancelCurrent()
 				if tick() - st.lastTry >= 1.5 then
 					st.lastTry = tick()
-					local touchFn = firetouchinterest
-					if touchFn then
-						local BPNow = getgenv().BananaPortals
-						local routePad = BPNow and BPNow.Cache and BPNow.Cache[routeKey] and BPNow.Cache[routeKey].part
-						if routePad and routePad.Parent then
-							pcall(function()
-								touchFn(root, routePad, 0)
-								task.wait(0.05)
-								touchFn(root, routePad, 1)
-							end)
-						end
-					end
+					touchPhysicalPortal(pad, routeKey)
 				end
 				return false, true
 			end
@@ -7947,6 +7993,40 @@ function FarmMethod()
 		["Aura Farm"] = "Aura Farm",
 	})[selectedToggle]
 	f = SelectedFarmMethod
+
+	-- Bones/Katakuri: quando o jogador estiver em uma das ilhas com portal
+	-- (Mansion, Hydra ou Tiki), primeiro usa o portal físico para o Castle.
+	-- Depois que chegar ao Castle, o fluxo original continua normalmente até
+	-- Haunted Castle/Cake Land. Isso evita viagem longa desnecessária e não
+	-- altera a lógica de farm/quest existente.
+	if
+		Settings["Use Portals"]
+		and (SelectedFarmMethod == "Farm Bones" or SelectedFarmMethod == "Farm Katakuri")
+		and game.PlaceId == getgenv().CheckPlaceId
+	then
+		local character = t.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local BP = getgenv().BananaPortals
+		if root and BP and BP.Islands then
+			local currentName, currentDistance
+			for name, center in pairs(BP.Islands) do
+				local dist = (root.Position - center).Magnitude
+				if not currentDistance or dist < currentDistance then
+					currentName, currentDistance = name, dist
+				end
+			end
+			if
+				currentName
+				and currentName ~= "Castle"
+				and currentDistance <= 2500
+				and BP.Islands.Castle
+			then
+				toTarget(CFrame.new(BP.Islands.Castle))
+				return
+			end
+		end
+	end
+
 	local C, J = 9999, 2
 	if f == "Farm Katakuri" then
 		C, V, H = 2275, y, "CakeQuest2"
