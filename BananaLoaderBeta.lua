@@ -2148,6 +2148,125 @@ StatusPrehistoricIsland = SectionStatus.CreateLabel({ Title = "Prehistoric Islan
 StatusFrozenDimension = SectionStatus.CreateLabel({ Title = "Frozen Dimension" })
 StatusMoon = SectionStatus.CreateLabel({ Title = "Moon" })
 StatusGear = SectionStatus.CreateLabel({ Title = "Acient One Status" })
+-- ===================== Status Bosses Spawn =====================
+-- Aba: bosses que nascem NORMALMENTE (por tempo). Cada boss mostra só uma bolinha:
+--   🟢 = o script detectou o boss spawnado agora (vivo em Enemies ou ReplicatedStorage)
+--   🔴 = o script não detectou o boss (não spawnado)
+-- Bosses que nascem por ação do jogador (summon, raid etc.) não estão nesta lista.
+do
+	local BossPage = Main.CreatePage({ Page_Name = "Status Bosses Spawn", Page_Title = "Status Bosses Spawn" })
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+	local Seas = {
+		{
+			title = "First Sea",
+			here = function()
+				return game.PlaceId == getgenv().CheckPlaceId3
+			end,
+			bosses = {
+				"Gorilla King", "Bobby", "The Saw", "Yeti", "Mob Leader", "Vice Admiral", "Warden",
+				"Magma Admiral", "Fishman Lord", "Wysper", "Thunder God", "Cyborg", "Ice Admiral", "Greybeard",
+			},
+		},
+		{
+			title = "Second Sea",
+			here = function()
+				return game.PlaceId == getgenv().CheckPlaceId2
+			end,
+			bosses = {
+				"Diamond", "Jeremy", "Fajita", "Don Swan", "Smoke Admiral", "Cursed Captain",
+				"Awakened Ice Admiral", "Tide Keeper",
+			},
+		},
+		{
+			title = "Third Sea",
+			here = function()
+				return game.PlaceId == getgenv().CheckPlaceId
+			end,
+			bosses = { "Stone", "Hydra Leader", "Kilo Admiral", "Captain Elephant", "Longma", "Cake Queen" },
+		},
+	}
+
+	local Known, Order = {}, {}
+	for _, sea in ipairs(Seas) do
+		local section = BossPage.CreateSection(sea.title)
+		for _, name in ipairs(sea.bosses) do
+			local entry = { name = name, here = sea.here, shown = nil }
+			entry.label = section.CreateLabel({ Title = "🔴 " .. name })
+			Known[name] = entry
+			Order[#Order + 1] = entry
+		end
+	end
+
+	local function CleanName(n)
+		n = n:gsub("%s*%[Lv%. [^%]]+%]", "")
+		n = n:gsub("%s*%[Boss%]", "")
+		return n
+	end
+
+	-- Bosses da lista vivos agora (Enemies + ReplicatedStorage). Retorna nome -> onde achou.
+	local function ScanAlive()
+		local alive = {}
+		local function scan(container, where)
+			if not container then
+				return
+			end
+			for _, model in ipairs(container:GetChildren()) do
+				if model:IsA("Model") and not model.Name:find("%[Raid Boss%]") then
+					local e = Known[CleanName(model.Name)]
+					if e then
+						local hum = model:FindFirstChildOfClass("Humanoid")
+						if hum and hum.Health > 0 then
+							alive[e.name] = where
+						end
+					end
+				end
+			end
+		end
+		scan(workspace:FindFirstChild("Enemies"), "mapa")
+		scan(ReplicatedStorage, "ReplicatedStorage")
+		return alive
+	end
+
+	getgenv().__BossStatusGen = (getgenv().__BossStatusGen or 0) + 1
+	local Gen = getgenv().__BossStatusGen
+	task.spawn(function()
+		while task.wait(1) and getgenv().__BossStatusGen == Gen do
+			pcall(function()
+				local alive = ScanAlive()
+				for _, e in ipairs(Order) do
+					local text
+					if alive[e.name] then
+						text = "🟢 " .. e.name
+					elseif e.here() then
+						text = "🔴 " .. e.name
+					else
+						-- Boss de outro mar: o script não consegue ver, então fica vermelho.
+						text = "🔴 " .. e.name .. " (outro mar)"
+					end
+					if text ~= e.shown then
+						e.shown = text
+						e.label.SetText(text)
+					end
+				end
+			end)
+		end
+	end)
+
+	-- Diagnóstico: mostra no console (F9) o que o script enxerga.
+	local DebugSection = BossPage.CreateSection("Debug")
+	DebugSection.CreateButton({ Title = "Debug Boss Spawn (ver no F9)" }, function()
+		local alive = ScanAlive()
+		print("[Banana Cat Hub] ===== Debug Boss Spawn =====")
+		for _, e in ipairs(Order) do
+			if e.here() then
+				print(string.format("  %-24s vivo=%s onde=%s", e.name, tostring(alive[e.name] ~= nil), tostring(alive[e.name])))
+			end
+		end
+		print("[Banana Cat Hub] ===== fim =====")
+	end)
+end
+-- ===============================================================
 SectionServer = PageStatusAndServer.CreateSection("Server")
 SectionServer.CreateButton({ Title = "Open Gui Server Browser (Low Player and Ping)" }, function()
 	local G = game:GetService("HttpService")
@@ -3317,6 +3436,26 @@ end
 SectionServer.CreateButton({ Title = "Hop Server" }, function()
 	HopServer()
 end)
+SectionServer.CreateButton({ Title = "Rejoin Server" }, function()
+	-- Volta para o MESMO servidor (mesmo JobId).
+	pcall(function()
+		require(game:GetService("ReplicatedStorage").Notification)
+			.new("<Color=Red>Banana Cat Hub : Rejoin Server<Color=/>")
+			:Display()
+	end)
+	local ok = pcall(function()
+		game:GetService("TeleportService"):TeleportToPlaceInstance(
+			game.PlaceId,
+			game.JobId,
+			game:GetService("Players").LocalPlayer
+		)
+	end)
+	if not ok then
+		pcall(function()
+			game:GetService("TeleportService"):Teleport(game.PlaceId, game:GetService("Players").LocalPlayer)
+		end)
+	end
+end)
 function HopLessAll()
 	require(game:GetService("ReplicatedStorage").Notification)
 		.new("<Color=Red>Banana Hub : Hop Server<Color=/>")
@@ -3552,6 +3691,46 @@ function IsMobAlive(K)
 	then
 		return true
 	end
+end
+-- Helpers do Elite Hunter (compartilhados).
+function EliteRequest()
+	if tick() - (getgenv().__EliteReq or 0) <= 5 then
+		return
+	end
+	getgenv().__EliteReq = tick()
+	pcall(function()
+		game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("EliteHunter")
+	end)
+end
+function EliteQuestOK(name)
+	local txt, visible = "", false
+	pcall(function()
+		local G = game:GetService("Players").LocalPlayer.PlayerGui.Main.Quest
+		visible = G.Visible
+		txt = G.Container.QuestTitle.Title.Text
+	end)
+	if visible then
+		if name and string.find(txt, name, 1, true) then
+			return true
+		end
+		for _, n in ipairs({ "Deandre", "Urban", "Diablo" }) do
+			if string.find(txt, n, 1, true) then
+				return true
+			end
+		end
+	end
+	-- Sem missão de elite: pede uma (com intervalo; antes abandonava e pedia a cada frame).
+	if tick() - (getgenv().__EliteReq or 0) > 5 then
+		getgenv().__EliteReq = tick()
+		local R = game:GetService("ReplicatedStorage").Remotes.CommF_
+		pcall(function()
+			if visible then
+				R:InvokeServer("AbandonQuest")
+			end
+			R:InvokeServer("EliteHunter")
+		end)
+	end
+	return false
 end
 local K = { "Deandre", "Urban", "Diablo" }
 function DetectEliteHunter()
@@ -5050,24 +5229,9 @@ function travelFunctions.TweenBypass(y, x)
 	return false
 end
 function ShouldResetTeleportSmart(y)
-	if not (Settings["Teleport Bypass"] or Settings["Reset Teleport"]) then
-		return false
-	end
-	if G or ReadyToDodge then
-		return false
-	end
-	local x = getHRP()
-	if not x then
-		return false
-	end
-	local k, P = N(y.Position), N(x.Position)
-	if not k then
-		return true
-	end
-	if P and k and P.Name == k.Name then
-		return false
-	end
-	return true
+	-- Teleport Bypass is intentionally disabled.
+	-- Keep this function so existing callers remain safe and the source structure does not break.
+	return false
 end
 task.spawn(function()
 	travelFunctions.LoadBypassTPLocation()
@@ -5335,14 +5499,13 @@ function toTarget(P, e)
 			end
 			return
 		end
-		if Settings["Use Portal Teleport"] then
-			-- Use the real in-game portal system when it is available.
-			-- No Portal Fruit is required for this path. If no physical portal can
-			-- be resolved, leave the normal entrance/tween logic below in control.
-			local function UsePhysicalPortal(targetPosition)
+		if Settings["Use Portals"] then
+			-- Physical Third Sea portals. This path only runs while a function is already
+			-- travelling to another island; enabling the option by itself does nothing.
+			local function UsePhysicalThirdSeaPortal(targetPosition)
 				local character = t.Character
 				local root = character and character:FindFirstChild("HumanoidRootPart")
-				if not root or not targetPosition then
+				if not root or not targetPosition or game.PlaceId ~= getgenv().CheckPlaceId then
 					return false
 				end
 
@@ -5351,58 +5514,92 @@ function toTarget(P, e)
 					return false
 				end
 
-				local best, bestDistance
+				local islandCenters = {
+					Castle = Vector3.new(-4967.68, 314.88, -3157.10),
+					Hydra = Vector3.new(5661.53, 1013.41, -334.96),
+					Mansion = Vector3.new(-12463.87, 374.91, -7523.77),
+					Tiki = Vector3.new(-16204.08, 9.09, 479.23),
+				}
+
+				local function nearestIsland(position)
+					local name, distance
+					for island, center in pairs(islandCenters) do
+						local d = (position - center).Magnitude
+						if not distance or d < distance then
+							name, distance = island, d
+						end
+					end
+					return distance and distance <= 2500 and name or nil
+				end
+
+				local currentIsland = nearestIsland(root.Position)
+				local targetIsland = nearestIsland(targetPosition)
+				if not currentIsland or not targetIsland or currentIsland == targetIsland then
+					return false
+				end
+
+				-- Physical portals connect Castle <-> Hydra/Mansion/Tiki.
+				local desiredDestination = targetIsland
+				if currentIsland ~= "Castle" then
+					desiredDestination = "Castle"
+				end
+
+				local portals = {}
 				for _, obj in ipairs(map:GetDescendants()) do
-					local n = string.lower(obj.Name)
-					if n:find("portal", 1, true) or n:find("teleport", 1, true) then
+					local lower = string.lower(obj.Name)
+					if string.find(lower, "portal", 1, true) then
 						local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
 						if part then
-							local dist = (part.Position - targetPosition).Magnitude
-							if dist <= 350 and (not bestDistance or dist < bestDistance) then
-								best, bestDistance = obj, dist
+							local island = nearestIsland(part.Position)
+							if island then
+								table.insert(portals, {Object = obj, Part = part, Island = island})
 							end
 						end
 					end
 				end
 
-				if not best then
+				local candidates = {}
+				for _, portal in ipairs(portals) do
+					if portal.Island == currentIsland then
+						table.insert(candidates, portal)
+					end
+				end
+				if #candidates == 0 then
 					return false
 				end
 
-				local part = best:IsA("BasePart") and best or best:FindFirstChildWhichIsA("BasePart", true)
-				if not part then
-					return false
-				end
-
-				getgenv().noclip = true
-				local old = root.CFrame
-				local ok = pcall(function()
-					root.CFrame = part.CFrame + Vector3.new(0, 3, 0)
-				end)
-				if not ok then
-					root.CFrame = old
-					return false
-				end
-
-				local prompt = best:FindFirstChildWhichIsA("ProximityPrompt", true)
-				if prompt then
-					pcall(function()
-						if fireproximityprompt then
-							fireproximityprompt(prompt)
-						end
+				-- Castle has three physical portals. Their left-to-right order is
+				-- Tiki, Mansion, Hydra. Other supported islands have one portal.
+				local selected
+				if currentIsland == "Castle" and desiredDestination ~= "Castle" and #candidates > 1 then
+					table.sort(candidates, function(a, b)
+						return a.Part.Position.X < b.Part.Position.X
 					end)
+					local index = ({Tiki = 1, Mansion = 2, Hydra = 3})[desiredDestination]
+					selected = candidates[index or 1]
+				else
+					selected = candidates[1]
 				end
-				return true
+				if not selected then
+					return false
+				end
+
+				-- Walk/tween onto the actual portal. No CFrame teleport, reset,
+				-- requestEntrance or Portal Fruit is used here.
+				getgenv().noclip = true
+				B(root, selected.Part.CFrame * CFrame.new(0, 2, 0), 350, 8)
+				local deadline = tick() + 8
+				while tick() < deadline do
+					task.wait(0.2)
+					if nearestIsland(root.Position) ~= currentIsland then
+						TweenManager.CancelCurrent()
+						return true
+					end
+				end
+				return false
 			end
 
-			local target
-			for name, pos in pairs(l[workspace:GetAttribute("MAP")] or {}) do
-				if (P.Position - pos).Magnitude <= 3000 and Y >= 3000 then
-					target = {name = name, position = pos}
-					break
-				end
-			end
-			if target and UsePhysicalPortal(target.position) then
+			if UsePhysicalThirdSeaPortal(P.Position) then
 				return
 			end
 		end
@@ -6059,6 +6256,60 @@ getgenv().SpamGunDragonStorm = function(E)
 	end)
 end
 GunM1State = { Last = 0 }
+-- Equipa uma tool só quando preciso: se já está na mão não faz nada, e as tentativas
+-- têm intervalo (antes o turbo chamava EquipTool a cada frame e brigava com o farm).
+function EquipOnlyIfNeeded(toolName, interval)
+	local char = t.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not char or not hum or hum.Health <= 0 or hum.Sit or not toolName then
+		return false
+	end
+	if char:FindFirstChild(toolName) then
+		return true -- já equipada
+	end
+	local last = getgenv().__EquipLast or {}
+	getgenv().__EquipLast = last
+	if os.clock() - (last[toolName] or 0) < (interval or 1.5) then
+		return false
+	end
+	local bp = t.Backpack:FindFirstChild(toolName)
+	if not bp then
+		return false
+	end
+	last[toolName] = os.clock()
+	hum:EquipTool(bp)
+	return false -- vai atirar no próximo ciclo
+end
+function DragonstormPhysicalClick(force)
+	local now = os.clock()
+	if not force and now - (getgenv().__DSClickLast or 0) < 2 then
+		return false
+	end
+	getgenv().__DSClickLast = now
+	task.spawn(function()
+		pcall(function()
+			local Camera = workspace.CurrentCamera
+			if not Camera then
+				return
+			end
+			local vp = Camera.ViewportSize
+			-- Mouse reto para o TOPO da tela (centro horizontal) antes de clicar.
+			local x, y = math.floor(vp.X / 2), 2
+			local VIM = game:GetService("VirtualInputManager")
+			VIM:SendMouseMoveEvent(x, y, game)
+			task.wait(0.03)
+			VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
+			task.wait(0.05)
+			VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
+			pcall(function()
+				local VU = game:GetService("VirtualUser")
+				VU:CaptureController()
+				VU:ClickButton1(Vector2.new(x, y))
+			end)
+		end)
+	end)
+	return true
+end
 function ShootM1(E)
 	local char = t.Character
 	if not char or not E then
@@ -6067,13 +6318,12 @@ function ShootM1(E)
 	local gunName = NameWeapon("Gun")
 	local gun = gunName and char:FindFirstChild(gunName)
 	if not gun then
-		-- Gun still in the backpack: equip it and shoot on the next cycle.
-		local bp = gunName and t.Backpack:FindFirstChild(gunName)
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if bp and hum then
-			hum:EquipTool(bp)
-		end
+		-- Gun fora da mão: equipa só quando preciso e atira no próximo ciclo.
+		EquipOnlyIfNeeded(gunName, 1.5)
 		return false
+	end
+	if gunName == "Dragonstorm" then
+		DragonstormPhysicalClick()
 	end
 	-- Target part / position (accepts Model, BasePart, Vector3 or CFrame).
 	local targetPart, targetPos
@@ -6158,10 +6408,21 @@ end
 getgenv().SpamGunSkullGuitar = function(E)
 	local l, Q = require(m.CombatUtil), t.Character
 	local m = Q and (Q:FindFirstChild("Skull Guitar"))
-	if not m or (l:IsGunReloading(m)) then
+	if not m or not E then
 		return
 	end
-	m.RemoteEvent:FireServer("TAP", E.Position)
+	-- Skull Guitar: usa somente o RemoteEvent da skill, sem mouse físico.
+	-- Mantém a checagem de reload para não enviar TAP enquanto a arma recarrega.
+	if l:IsGunReloading(m) then
+		return
+	end
+	local position = E.Position
+	pcall(function()
+		local remote = m:FindFirstChild("RemoteEvent")
+		if remote then
+			remote:FireServer("TAP", position)
+		end
+	end)
 end
 local function m(E, l)
 	local Q, d, I, _, o, V, N =
@@ -6628,9 +6889,9 @@ SettingFarmMainSection.CreateSlider(
 	end
 )
 SettingFarmMainSection.CreateToggle(
-	{ Title = "Use Portal Teleport", Desc = nil, Default = Settings["Use Portal Teleport"] or false },
+	{ Title = "Use Portals", Desc = "Uses the physical Third Sea portals only when a running function needs to travel between supported islands", Default = Settings["Use Portals"] or false },
 	function(I)
-		SaveSettings("Use Portal Teleport", I)
+		SaveSettings("Use Portals", I)
 	end
 )
 SettingFarmMainSection.CreateSlider(
@@ -6643,13 +6904,6 @@ SettingFarmMainSection.CreateToggle(
 	{ Title = "Bring Mob", Desc = nil, Default = Settings["Bring Mob"] or true },
 	function(I)
 		SaveSettings("Bring Mob", I)
-	end
-)
-SettingFarmMainSection.CreateToggle(
-	{ Title = "Teleport Bypass [ Beta ]", Desc = "Uses the existing safe reset/bypass system", Default = Settings["Teleport Bypass"] or Settings["Reset Teleport"] or false },
-	function(I)
-		SaveSettings("Teleport Bypass", I)
-		SaveSettings("Reset Teleport", I)
 	end
 )
 SaveSettings("Speed Tween ", 220)
@@ -8113,9 +8367,23 @@ BossDarkbeardSection.CreateToggle(
 	end
 )
 function GetPathFruit()
-	local f, V, Y = next, game.Workspace:GetChildren()
-	for H, H in f, V, Y do
-		if (H:IsA("Tool") or (H:IsA("Model"))) and (string.find(H.Name, "Fruit")) and (H:FindFirstChild("Handle")) then
+	local workspaceService = game:GetService("Workspace")
+	local function IsFruitObject(H)
+		if not H or not (H:IsA("Tool") or H:IsA("Model")) then
+			return false
+		end
+		if not string.find(string.lower(H.Name), "fruit", 1, true) then
+			return false
+		end
+		return H:FindFirstChild("Handle", true) ~= nil
+	end
+	for _, H in ipairs(workspaceService:GetChildren()) do
+		if IsFruitObject(H) then
+			return H
+		end
+	end
+	for _, H in ipairs(workspaceService:GetDescendants()) do
+		if IsFruitObject(H) then
 			return H
 		end
 	end
@@ -8523,6 +8791,35 @@ function GetNearestChest()
 	return F
 end
 getgenv().DetectRaidCastle = false
+-- Aviso da Raid Pirata: quando uma notificação falar de pirate + raid/castle, marca o horário.
+-- O Auto Pirate Raid usa isso para vir ao Castelo do Mar assim que o aviso aparece.
+do
+	pcall(function()
+		if getgenv().__PirateWarnConn then
+			getgenv().__PirateWarnConn:Disconnect()
+		end
+	end)
+	local function CheckWarn(obj)
+		local ok, txt = pcall(function()
+			return obj.Text
+		end)
+		if not ok or typeof(txt) ~= "string" or #txt < 8 then
+			return
+		end
+		local low = txt:lower()
+		if low:find("pirate") and (low:find("raid") or low:find("castle") or low:find("attack") or low:find("invad")) then
+			getgenv().__PirateRaidWarn = tick()
+		end
+	end
+	getgenv().__PirateWarnConn = t:WaitForChild("PlayerGui").DescendantAdded:Connect(function(obj)
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+			CheckWarn(obj)
+			obj:GetPropertyChangedSignal("Text"):Connect(function()
+				CheckWarn(obj)
+			end)
+		end
+	end)
+end
 getgenv().ValueCollectChestSpawnGod = 0
 getgenv().__StackGen = (getgenv().__StackGen or 0) + 1
 task.spawn(function()
@@ -8907,21 +9204,15 @@ task.spawn(function()
 									end
 								elseif not DetectItemPlr("God's Chalice") then
 									local P = DetectEliteHunter()
+									if not P then
+										EliteRequest()
+									end
 									if P then
 										StackFarm = false
 										StackFarmOther = false
-										if
-											not string.find(
-												game.Players.LocalPlayer.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text,
-												P.Name
-											)
-											or not game:GetService("Players").LocalPlayer.PlayerGui.Main.Quest.Visible
-										then
-											game:GetService("ReplicatedStorage").Remotes.CommF_
-												:InvokeServer("AbandonQuest")
-											game:GetService("ReplicatedStorage").Remotes.CommF_
-												:InvokeServer("EliteHunter")
-										else
+										if not EliteQuestOK(P.Name) then
+		-- (pedido da missão feito por EliteQuestOK)
+	else
 											repeat
 												task.wait()
 												sizepart(P)
@@ -9001,102 +9292,84 @@ task.spawn(function()
 			if Settings["Auto Elite Hunter"] then
 				local EliteRemote = game:GetService("ReplicatedStorage").Remotes.CommF_
 				local EliteNames = { "Deandre", "Urban", "Diablo" }
-				-- Lê qual elite é o alvo da missão atual (pelo título da missão).
+
 				local function GetEliteQuestName()
 					local found
 					pcall(function()
-						local G = t.PlayerGui.Main.Quest
-						if G.Visible then
-							local txt = G.Container.QuestTitle.Title.Text
-							for _, n in ipairs(EliteNames) do
-								if string.find(txt, n, 1, true) then
-									found = n
-									break
+						local quest = t.PlayerGui.Main.Quest
+						if quest.Visible then
+							local title = quest.Container.QuestTitle.Title.Text
+							for _, name in ipairs(EliteNames) do
+								if string.find(title, name, 1, true) then
+									found = name
+								break
 								end
 							end
 						end
 					end)
 					return found
 				end
-				-- Procura o elite da missão: primeiro no mapa (Enemies), depois no ReplicatedStorage.
-				local function FindEliteByName(n)
-					if not n then
-						return nil
-					end
-					local m = workspace.Enemies:FindFirstChild(n)
-					if m and m:IsA("Model") and IsMobAlive(m) then
-						return m
-					end
-					m = game:GetService("ReplicatedStorage"):FindFirstChild(n)
-					if m and m:IsA("Model") and IsMobAlive(m) then
-						return m
-					end
-				end
-				local questName = GetEliteQuestName()
-				if not questName and tick() - (getgenv().__EliteReq or 0) > 5 then
-					-- Sem missão de elite: pede uma (é ela que faz o elite aparecer).
-					getgenv().__EliteReq = tick()
-					pcall(function()
-						EliteRemote:InvokeServer("EliteHunter")
-					end)
-					task.wait(2)
-					questName = GetEliteQuestName()
-				end
-				local y = FindEliteByName(questName)
-				if not y and not questName then
-					-- Título da missão não trouxe o nome: usa o elite detectado (mapa antes do ReplicatedStorage).
-					for _, n in ipairs(EliteNames) do
-						y = FindEliteByName(n)
-						if y then
-							break
+
+				local function FindEliteByName(name)
+					local enemies = workspace:FindFirstChild("Enemies")
+					if enemies and name then
+						local mob = enemies:FindFirstChild(name)
+						if mob and mob:IsA("Model") and IsMobAlive(mob) then
+							return mob
+						end
+						for _, mob in ipairs(enemies:GetDescendants()) do
+							if mob:IsA("Model") and mob.Name == name and IsMobAlive(mob) then
+								return mob
+							end
 						end
 					end
+					return nil
 				end
-				if y then
+
+				local questName = GetEliteQuestName()
+				if not questName then
+					EliteRequest()
+					task.wait(0.35)
+					questName = GetEliteQuestName()
+				end
+
+				local target = FindEliteByName(questName)
+				if not target then
+					target = DetectEliteHunter()
+				end
+
+				if target then
 					StackFarm = false
 					StackFarmOther = false
 					getgenv().__EliteLost = nil
-					local engagedName = y.Name
+					local engagedName = target.Name
 					repeat
 						task.wait()
-						-- O elite pode trocar de instância (ReplicatedStorage -> mapa) ao chegar perto.
-						if not y.Parent or not y:FindFirstChild("HumanoidRootPart") then
-							y = FindEliteByName(engagedName)
-							if not y then
-								break
-							end
+						if not target or not IsMobAlive(target) then
+							target = FindEliteByName(engagedName) or DetectEliteHunter()
 						end
-						if y.Parent == workspace.Enemies then
-							sizepart(y)
-							if Settings["Select Weapon"] == "Blox Fruit" then
-								toTarget(y.HumanoidRootPart.CFrame * CFrame.new(-7, 20, 0))
-							else
-								toTarget(y.HumanoidRootPart.CFrame * CFrame.new(7, 20, 0))
-							end
-							ClickM1(y)
+						if target and IsMobAlive(target) and target:FindFirstChild("HumanoidRootPart") then
+							sizepart(target)
+							local offset = Settings["Select Weapon"] == "Blox Fruit" and CFrame.new(-7, 20, 0) or CFrame.new(7, 20, 0)
+							toTarget(target.HumanoidRootPart.CFrame * offset)
+							ClickM1(target)
 							UsedualFlock()
-						else
-							-- Ainda não carregou no mapa: voa até a posição do elite.
-							toTarget(y.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
 						end
-					until not Settings["Auto Elite Hunter"] or not IsMobAlive(y) and not FindEliteByName(engagedName)
-					if not IsMobAlive(y) and getgenv().QuestTrainer and getgenv().QuestTrainer.CountKillMob then
-						getgenv().QuestTrainer.CountKillMob = getgenv().QuestTrainer.CountKillMob + 1
-					end
+					until not Settings["Auto Elite Hunter"] or not target or not IsMobAlive(target)
 					return
-				elseif Settings["Hop Server Elite Hunter"] then
-					if not DetectItemPlr("God's Chalice") then
-						-- Só troca de servidor depois de pedir a missão e o elite não aparecer.
-						getgenv().__EliteLost = getgenv().__EliteLost or tick()
-						if tick() - getgenv().__EliteLost >= 8 then
-							getgenv().__EliteLost = nil
-							HopServer()
-						end
-					else
-						toTarget(CFrame.new(-12463.8740234375, 374.9144592285156, -7523.77392578125))
+				end
+
+				if Settings["Hop Server Elite Hunter"] and not DetectItemPlr("God's Chalice") then
+					getgenv().__EliteLost = getgenv().__EliteLost or tick()
+					if tick() - getgenv().__EliteLost >= 8 then
+						getgenv().__EliteLost = nil
+						HopServer()
 					end
+				elseif DetectItemPlr("God's Chalice") then
+					toTarget(CFrame.new(-12463.8740234375, 374.9144592285156, -7523.77392578125))
 				end
 			end
+
 			if Settings["Auto Factory"] then
 				CoreBoss = CheckNameBoss("Core")
 				if CoreBoss then
@@ -9113,7 +9386,21 @@ task.spawn(function()
 			end
 			if Settings["Auto Pirate Raid"] then
 				local raidActive = t.PlayerGui.Main.TopHUDList.RaidTimer.Visible
+				local warnFresh = getgenv().__PirateRaidWarn and tick() - getgenv().__PirateRaidWarn < 300
 				local y = GetPirateRaid()
+				if y or raidActive or warnFresh then
+					getgenv().__PirateRaidSeen = tick()
+				end
+				-- Antes, DetectRaidCastle nunca voltava a false e o farm ficava preso no castelo.
+				if
+					getgenv().DetectRaidCastle
+					and not y
+					and not raidActive
+					and not warnFresh
+					and tick() - (getgenv().__PirateRaidSeen or 0) > 25
+				then
+					getgenv().DetectRaidCastle = false
+				end
 				if y then
 					getgenv().DetectRaidCastle = true
 					StackFarm = false
@@ -9127,7 +9414,7 @@ task.spawn(function()
 						ClickM1(y)
 						toTarget(y.HumanoidRootPart.CFrame * P)
 					until not IsMobAlive(y) or not Settings["Auto Pirate Raid"]
-				elseif raidActive or getgenv().DetectRaidCastle then
+				elseif (raidActive or warnFresh or getgenv().DetectRaidCastle) and game.PlaceId == getgenv().CheckPlaceId3 then
 					StackFarm = false
 					StackFarmOther = false
 					getgenv().DetectRaidCastle = true
@@ -9136,21 +9423,24 @@ task.spawn(function()
 			end
 			if Settings["Teleport To Fruit"] then
 				local y = GetPathFruit()
-				if y then
+				local character = t.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				local handle = y and y:FindFirstChild("Handle", true)
+				if y and handle and root then
 					StackFarm = false
 					StackFarmOther = false
-					if (y.Handle.Position - t.Character.HumanoidRootPart.Position).Magnitude <= 5 then
+					if (handle.Position - root.Position).Magnitude <= 7 then
 						getgenv().noclip = false
 						game:GetService("VirtualInputManager"):SendKeyEvent(true, "Space", false, game)
-						wait()
+						task.wait()
 						game:GetService("VirtualInputManager"):SendKeyEvent(false, "Space", false, game)
 					else
-						toTarget(y.Handle.CFrame, true)
+						toTarget(handle.CFrame, true)
 					end
 					return
 				elseif Settings["Teleport To Fruit [ Hop Server ]"] then
 					HopServer()
-					wait(5)
+					task.wait(5)
 				end
 			end
 			if not StackFarm then
@@ -9941,15 +10231,14 @@ function AutoQuestDojo()
 	elseif getgenv().QuestTrainer.BeltName == "Purple" and getgenv().QuestTrainer.CountKillMob < 3 then
 		SaveSettings("QuestDojo", true)
 		local y = DetectEliteHunter()
+		if not y then
+			EliteRequest()
+		end
 		if y then
 			StackFarm = false
-			if
-				not string.find(game.Players.LocalPlayer.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, y.Name)
-				or not game:GetService("Players").LocalPlayer.PlayerGui.Main.Quest.Visible
-			then
-				game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
-				game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("EliteHunter")
-			else
+			if not EliteQuestOK(y.Name) then
+		-- (pedido da missão feito por EliteQuestOK)
+	else
 				repeat
 					task.wait()
 					sizepart(y)
@@ -11520,86 +11809,82 @@ local function b()
 end
 function RandomFruit()
 	local Players = game:GetService("Players")
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local LocalPlayer = Players.LocalPlayer
-	local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
-	local CommF = Remotes and Remotes:FindFirstChild("CommF_")
+	local CommF = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+	CommF = CommF and CommF:FindFirstChild("CommF_")
 	if not CommF or not LocalPlayer then
 		return false
 	end
 
-	-- Evita chamadas repetidas enquanto a janela de giro ainda está aberta.
+	-- Janela de giro aberta: espera ela fechar (o loop de cima cuida de fechar).
 	local PlayerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	local SpinnerWindow = PlayerGui and PlayerGui:FindFirstChild("SpinnerWindow")
 	if SpinnerWindow and SpinnerWindow.Enabled then
 		return false
 	end
 
-	-- Em cooldown de falha (sem beli / sem tempo): não fica spamando o servidor.
+	-- Sem spam no servidor quando ainda não dá para comprar.
 	if (getgenv().__RandomFruitNext or 0) > tick() then
 		return false
 	end
 
-	-- Caixa atual do banner (padrão "DLCBoxData" quando não há banner ativo).
-	local boxName = "DLCBoxData"
-	pcall(function()
-		local Banner = require(ReplicatedStorage.Controllers.BannerClient)
-		local item = Banner.TryGetBannerItemIfActiveAsync()
-		if item and item.BoxName then
-			boxName = item.BoxName
-		end
-	end)
-
-	local bought = false
-	-- 1) API nova: Cousin + nome da caixa (retorna 1 quando compra).
-	local ok1, r1 = pcall(function()
-		return CommF:InvokeServer("Cousin", boxName)
-	end)
-	if ok1 and (r1 == 1 or r1 == true) then
-		bought = true
+	-- NOVO MÉTODO: o mesmo fluxo que o jogo valida, em ordem:
+	--   Cousin/Check (beli e nível) -> Cousin/CheckTime (tempo liberado) -> Cousin/<caixa> (compra)
+	-- Antes o script chamava "Cousin","Buy" direto, que o servidor não aceita mais.
+	local okFlow, bought = pcall(b)
+	if okFlow and bought then
+		getgenv().__RandomFruitNext = tick() + 1
+		return true
 	end
-	-- 2) Fallback: API antiga "Cousin", "Buy".
-	if not bought then
-		local ok2, r2 = pcall(function()
+
+	-- Plano B (servidores com a API antiga).
+	if not okFlow then
+		local okOld, resOld = pcall(function()
 			return CommF:InvokeServer("Cousin", "Buy")
 		end)
-		if ok2 and r2 and r2 ~= 0 and r2 ~= false then
-			bought = true
+		if okOld and resOld and resOld ~= 0 and resOld ~= false then
+			getgenv().__RandomFruitNext = tick() + 1
+			return true
 		end
 	end
 
-	getgenv().__RandomFruitNext = tick() + (bought and 1 or 5)
-	return bought
+	-- Não deu para comprar agora (sem beli / em espera): tenta de novo em 4s.
+	getgenv().__RandomFruitNext = tick() + 4
+	return false
 end
 
 local FruitInfoModule = require(game:GetService("ReplicatedStorage").FruitInfo)
 
+-- Nome interno da fruta (ex.: "Bomb-Bomb") a partir da tool. Tenta, em ordem:
+-- atributo OriginalName -> nome já igual a uma chave do FruitInfo -> chave "X-..." do FruitInfo -> "X-X".
 local function GetFruitOriginalName(tool)
 	if not tool or not tool:IsA("Tool") then
 		return nil
 	end
-
 	local original = tool:GetAttribute("OriginalName")
 	if typeof(original) == "string" and original ~= "" then
 		return original
 	end
-
 	local name = tool.Name
 	local clean = string.gsub(name, " Fruit$", "")
 	if clean == "" then
 		return nil
 	end
-
-	-- Frutas com nome "Familia: Variante" (ex.: "Bird: Falcon", "Human: Buddha")
-	-- usam o formato "Familia-Familia: Variante" no inventário.
-	local family, variant = string.match(clean, "^(.-):%s*(.+)$")
-	if family and variant then
-		family = string.gsub(family, "%s+", "")
-		return family .. "-" .. family .. ": " .. variant
+	local list = FruitInfoModule and FruitInfoModule.List
+	if type(list) == "table" then
+		if list[name] then
+			return name
+		end
+		if list[clean .. "-" .. clean] then
+			return clean .. "-" .. clean
+		end
+		for key in pairs(list) do
+			local short = string.match(tostring(key), "^(.-)%-")
+			if short and short == clean then
+				return key
+			end
+		end
 	end
-
-	-- Formato usado pelo inventário de frutas quando o atributo não existe.
-	clean = string.gsub(clean, "%s+", "")
 	return clean .. "-" .. clean
 end
 
@@ -11610,72 +11895,83 @@ local function IsFruitTool(tool)
 	if tool:FindFirstChild("Ignored") then
 		return false
 	end
-	-- Falhou ao guardar há pouco: tenta de novo só depois de 30s (antes nunca mais tentava).
-	local failedAt = tool:GetAttribute("__StoreFail")
-	if typeof(failedAt) == "number" and tick() - failedAt < 30 then
-		return false
-	end
-
 	local original = tool:GetAttribute("OriginalName")
-	local name = tool.Name
-	return (typeof(original) == "string" and original ~= "")
-		or string.find(name, "Fruit", 1, true) ~= nil
+	return (typeof(original) == "string" and original ~= "") or string.find(tool.Name, "Fruit", 1, true) ~= nil
 end
 
+-- NOVO MÉTODO de guardar fruta:
+--  1) se a fruta está na mão, guarda na mochila primeiro (guardar equipada falhava);
+--  2) chama o servidor com (nome, tool) e confere se a tool sumiu;
+--  3) se não sumiu, tenta só com o nome;
+--  4) se ainda não guardou, não tenta de novo por 30s e não manda webhook falso.
 function StoreFruit(container)
 	if not container or not container.GetChildren then
 		return
 	end
-
 	local Players = game:GetService("Players")
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local LocalPlayer = Players.LocalPlayer
-	local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
-	local CommF = Remotes and Remotes:FindFirstChild("CommF_")
+	local CommF = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+	CommF = CommF and CommF:FindFirstChild("CommF_")
 	if not CommF or not LocalPlayer then
 		return
 	end
 
 	for _, tool in ipairs(container:GetChildren()) do
 		if IsFruitTool(tool) then
-			local fruitName = GetFruitOriginalName(tool)
-			if fruitName then
-				local ok = pcall(function()
-					CommF:InvokeServer("StoreFruit", fruitName, tool)
-				end)
-				task.wait(0.3)
-				if tool.Parent then
-					-- Fallback: formato antigo, só com o nome.
-					ok = pcall(function()
-						CommF:InvokeServer("StoreFruit", fruitName)
-					end) or ok
-					task.wait(0.3)
-				end
-				local stored = ok and (not tool.Parent)
-				if not stored then
-					pcall(function()
-						tool:SetAttribute("__StoreFail", tick())
-					end)
-				end
-
-				if stored and Settings["Webhook Store Fruit"] and Settings["Select Rarity Fruit"] then
-					local rarityName
-					pcall(function()
-						local info = FruitInfoModule.List[fruitName]
-						if info and info.Rarity then
-							rarityName = info.Rarity.Name
+			local failedAt = tool:GetAttribute("__StoreFail")
+			if not (typeof(failedAt) == "number" and tick() - failedAt < 30) then
+				local fruitName = GetFruitOriginalName(tool)
+				if fruitName then
+					-- 1) tira da mão
+					if tool.Parent == LocalPlayer.Character then
+						local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+						if hum then
+							pcall(function()
+								hum:UnequipTools()
+							end)
+							task.wait(0.15)
 						end
+					end
+					local toolName = tool.Name
+					local function Gone()
+						return not tool.Parent
+							or (tool.Parent ~= LocalPlayer.Backpack and tool.Parent ~= LocalPlayer.Character)
+					end
+					-- 2) (nome, tool)
+					pcall(function()
+						CommF:InvokeServer("StoreFruit", fruitName, tool)
 					end)
-
-					if (rarityName and Settings["Select Rarity Fruit"][rarityName])
-						or SkinFruit[tool.Name] then
+					task.wait(0.3)
+					-- 3) só o nome
+					if not Gone() then
 						pcall(function()
-							getgenv().WebhookStoreFruit(tool.Name)
+							CommF:InvokeServer("StoreFruit", fruitName)
+						end)
+						task.wait(0.3)
+					end
+					if Gone() then
+						if Settings["Webhook Store Fruit"] and Settings["Select Rarity Fruit"] then
+							local rarityName
+							pcall(function()
+								local info = FruitInfoModule.List[fruitName]
+								if info and info.Rarity then
+									rarityName = info.Rarity.Name
+								end
+							end)
+							if (rarityName and Settings["Select Rarity Fruit"][rarityName]) or SkinFruit[toolName] then
+								pcall(function()
+									getgenv().WebhookStoreFruit(toolName)
+								end)
+							end
+						end
+					else
+						-- 4) não guardou (inventário cheio?): espera 30s
+						pcall(function()
+							tool:SetAttribute("__StoreFail", tick())
 						end)
 					end
+					task.wait(0.4)
 				end
-
-				task.wait(1)
 			end
 		end
 	end
@@ -12224,59 +12520,7 @@ SettingSeaEventSection.CreateDropdown(
 		SaveSettings("Select Weapons Use Skill", l, y)
 	end
 )
-SettingSeaEventSection.CreateToggle(
-	{
-		Title = "Auto Use M1 DragonStorm For Sea Events",
-		Desc = "Equips Dragonstorm and taps the screen center every 2s (replaces tapping manually)",
-		Default = Settings["Auto Use M1 DragonStorm For Sea Events"] or false,
-	},
-	function(l)
-		SaveSettings("Auto Use M1 DragonStorm For Sea Events", l)
-	end
-)
 -- M1 físico da Dragonstorm: não mexe nos Remotes normais, só faz o toque que você faria na tela.
-getgenv().__DSClickGen = (getgenv().__DSClickGen or 0) + 1
-task.spawn(function()
-	local MyGen = getgenv().__DSClickGen
-	while task.wait(2) and getgenv().__DSClickGen == MyGen do
-		pcall(function()
-			if not Settings["Auto Use M1 DragonStorm For Sea Events"] then
-				return
-			end
-			local Character = t.Character
-			local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
-			if not Humanoid or Humanoid.Health <= 0 then
-				return
-			end
-			local Tool = Character:FindFirstChild("Dragonstorm")
-			if not Tool then
-				local InBackpack = t.Backpack:FindFirstChild("Dragonstorm")
-				if not InBackpack then
-					return -- sem Dragonstorm: não clica à toa na tela
-				end
-				Humanoid:EquipTool(InBackpack)
-				task.wait(0.3)
-			end
-			local Camera = workspace.CurrentCamera
-			if not Camera then
-				return
-			end
-			local vp = Camera.ViewportSize
-			local x, y = vp.X / 2, vp.Y / 2
-			-- Clique principal: VirtualInputManager.
-			local VIM = game:GetService("VirtualInputManager")
-			VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
-			task.wait(0.05)
-			VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
-			-- Reforço: VirtualUser.
-			pcall(function()
-				local VU = game:GetService("VirtualUser")
-				VU:CaptureController()
-				VU:ClickButton1(Vector2.new(x, y))
-			end)
-		end)
-	end
-end)
 SettingSeaEventSection.CreateToggle(
 	{
 		Title = "Use Dragonstorm For Sea Event",
@@ -12923,11 +13167,36 @@ function UseDragonstormAllSeaEvents(Part)
 		end
 		return
 	end
-	equiptool("Dragonstorm")
+	-- Só a Dragonstorm: equipa só quando preciso e nunca puxa outra Gun
+	-- (antes UseSkillGun() equipava a primeira Gun da mochila direto).
+	if not EquipOnlyIfNeeded("Dragonstorm", 1.0) then
+		return
+	end
+	DragonstormPhysicalClick()
 	SpamGunDragonStorm(Part)
 	if t:DistanceFromCharacter(Part.Position) < 400 then
-		UseSkillGun()
+		UseDragonstormSkill()
 	end
+end
+-- Skills só da Dragonstorm (sem equipar nada).
+function UseDragonstormSkill()
+	pcall(function()
+		local tool = t.Character and t.Character:FindFirstChild("Dragonstorm")
+		if not tool or not t.PlayerGui.Main.Skills:FindFirstChild("Dragonstorm") then
+			return
+		end
+		local X = CheckCDSkillTransformation(tool, Settings["Select Skills Gun"] or {})
+		if X then
+			local VIM = game:GetService("VirtualInputManager")
+			VIM:SendKeyEvent(true, X.Name, false, game)
+			if Settings["Use skill fast dont hold"] then
+				task.wait(0.05)
+			else
+				task.wait(tonumber(holdskill) or 0.1)
+			end
+			VIM:SendKeyEvent(false, X.Name, false, game)
+		end
+	end)
 end
 function UseSkillGun()
 	local b = NameWeapon("Gun", true) or false
@@ -14195,6 +14464,15 @@ function AutoAttackLeviathan()
 					if t.Character:FindFirstChild(b) and (t.Character[b]:FindFirstChild("LeftClickRemote")) then
 						getgenv().UseFruitM1(s, true)
 					end
+				elseif Settings["Use Click M1 DragonStorm Leviathan"] then
+					equiptool("Dragonstorm")
+					if t.Character:FindFirstChild("Dragonstorm") then
+						DragonstormPhysicalClick(true)
+						SpamGunDragonStorm(s.Hitbox11)
+						if t:DistanceFromCharacter(s.Hitbox11.Position) < 400 then
+							UseDragonstormSkill()
+						end
+					end
 				elseif Settings["Use Click M1 Skull Guitar Leviathan"] then
 					equiptool(NameWeapon("Gun"))
 					SpamGunSkullGuitar(s.Hitbox11)
@@ -14238,6 +14516,15 @@ function AutoAttackLeviathan()
 				local X = NameWeapon("Blox Fruit")
 				if t.Character:FindFirstChild(X) and (t.Character[X]:FindFirstChild("LeftClickRemote")) then
 					getgenv().UseFruitM1(b, true)
+				end
+			elseif Settings["Use Click M1 DragonStorm Leviathan"] then
+				equiptool("Dragonstorm")
+				if t.Character:FindFirstChild("Dragonstorm") then
+					DragonstormPhysicalClick(true)
+					SpamGunDragonStorm(b.Hitbox11)
+					if t:DistanceFromCharacter(b.Hitbox11.Position) < 400 then
+						UseDragonstormSkill()
+					end
 				end
 			elseif Settings["Use Click M1 Skull Guitar Leviathan"] then
 				equiptool(NameWeapon("Gun"))
@@ -14409,6 +14696,12 @@ LeviathanEventSection.CreateToggle(
 	{ Title = "Use Click M1 Fruit Leviathan", Desc = nil, Default = Settings["Use Click M1 Fruit Leviathan"] or false },
 	function(b)
 		SaveSettings("Use Click M1 Fruit Leviathan", b)
+	end
+)
+LeviathanEventSection.CreateToggle(
+	{ Title = "Use Click M1 DragonStorm Leviathan", Desc = nil, Default = Settings["Use Click M1 DragonStorm Leviathan"] or false },
+	function(b)
+		SaveSettings("Use Click M1 DragonStorm Leviathan", b)
 	end
 )
 LeviathanEventSection.CreateToggle(
@@ -18783,13 +19076,13 @@ end)
 function GetYama()
 	if game.ReplicatedStorage.Remotes.CommF_:InvokeServer("EliteHunter", "Progress") < 30 then
 		local g = DetectEliteHunter()
-		if
-			not string.find(game.Players.LocalPlayer.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, g.Name)
-			or not game:GetService("Players").LocalPlayer.PlayerGui.Main.Quest.Visible
-		then
-			game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
-			game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("EliteHunter")
-		else
+		if not g then
+			EliteRequest()
+			return
+		end
+		if not EliteQuestOK(g.Name) then
+		-- (pedido da missão feito por EliteQuestOK)
+	else
 			repeat
 				task.wait()
 				sizepart(g)
@@ -19388,18 +19681,15 @@ function AutoYorumini()
 		until not IsMobAlive(g) or not Settings["Auto Yoru Mini"]
 	elseif not DetectItemPlr("God's Chalice") then
 		elitehunter = DetectEliteHunter()
+		if not elitehunter then
+			EliteRequest()
+		end
 		if elitehunter then
 			local g = elitehunter
 			if g then
-				if
-					not string.find(
-						game.Players.LocalPlayer.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text,
-						g.Name
-					) or not game:GetService("Players").LocalPlayer.PlayerGui.Main.Quest.Visible
-				then
-					game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
-					game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("EliteHunter")
-				else
+				if not EliteQuestOK(g.Name) then
+		-- (pedido da missão feito por EliteQuestOK)
+	else
 					repeat
 						task.wait()
 						sizepart(g)
@@ -19868,7 +20158,7 @@ SettingsVolcanoSection = VolcanoTab.CreateSection("Settings Volcano")
 SettingsVolcanoSection.CreateDropdown(
 	{
 		Title = "Select Weapon Kill Golem",
-		List = { "Melee", "Sword", "Blox Fruit" },
+		List = { "Melee", "Sword", "Blox Fruit", "Gun" },
 		Search = true,
 		Selected = false,
 		Default = Settings["Select Weapon Kill Golem"] or nil,
@@ -21378,6 +21668,32 @@ MISCPVPSection.CreateToggle(
 		end)
 	end
 )
+-- Reaplica a velocidade do slider a cada passo de física. Fica aqui, junto da UI, de propósito:
+-- antes ficava no fim do arquivo e nunca rodava se algum erro anterior abortasse o script.
+do
+	getgenv().__WSEarlyGen = (getgenv().__WSEarlyGen or 0) + 1
+	local WSGen = getgenv().__WSEarlyGen
+	pcall(function()
+		if getgenv().__WSEarlyConn then
+			getgenv().__WSEarlyConn:Disconnect()
+		end
+	end)
+	getgenv().__WSEarlyConn = game:GetService("RunService").Stepped:Connect(function()
+		if getgenv().__WSEarlyGen ~= WSGen then
+			return
+		end
+		if Settings["Change WalkSpeed"] then
+			local Character = t.Character
+			local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+			if Humanoid then
+				local sp = math.clamp(tonumber(Settings["Input WalkSpeed"]) or 16, 0, 220)
+				if Humanoid.WalkSpeed ~= sp then
+					Humanoid.WalkSpeed = sp
+				end
+			end
+		end
+	end)
+end
 MISCPVPSection.CreateToggle(
 	{ Title = "Walk On Water", Desc = nil, Default = Settings["Walk On Water "] or true },
 	function(b)
@@ -22097,7 +22413,7 @@ spawn(function()
 		)
 	end)
 end)
-do
+pcall(function()
 	local MT = getrawmetatable(game)
 	local OldNameCall = MT.__namecall
 	setreadonly(MT, false)
@@ -22134,12 +22450,21 @@ do
 		return OldNameCall(self, unpack(Args))
 	end)
 	setreadonly(MT, true)
-end
+end)
 x = game:GetService("RunService")
-runAsync = require(game.ReplicatedStorage.Util.runAsync)
-Spinner = require(game:GetService("ReplicatedStorage").Controllers.UI.Spinner)
-SharedGachaUtil = require(game.ReplicatedStorage.Modules.Gacha.SharedGachaUtil)
-TextUtil = require(game.ReplicatedStorage.Modules.Util.TextUtil)
+-- Cada require protegido: se um módulo mudou de lugar, o resto do script (movimento, loops) continua.
+pcall(function()
+	runAsync = require(game.ReplicatedStorage.Util.runAsync)
+end)
+pcall(function()
+	Spinner = require(game:GetService("ReplicatedStorage").Controllers.UI.Spinner)
+end)
+pcall(function()
+	SharedGachaUtil = require(game.ReplicatedStorage.Modules.Gacha.SharedGachaUtil)
+end)
+pcall(function()
+	TextUtil = require(game.ReplicatedStorage.Modules.Util.TextUtil)
+end)
 -- Movimento: movido para fora do RenderStepped (antes criava um loop novo a cada frame).
 getgenv().__MoveGen = (getgenv().__MoveGen or 0) + 1
 local MoveGen = getgenv().__MoveGen
@@ -22428,36 +22753,9 @@ local function BananaCatFastAttackOnce()
     end)
 end
 
-getgenv().BananaCatFastAttackEnabled = Settings["Fast Attack"] == true
-getgenv().BananaCatSuperFastAttackEnabled = Settings["Super Fast Attack"] == true
+getgenv().BananaCatFastAttackEnabled = false
+getgenv().BananaCatSuperFastAttackEnabled = false
 getgenv().BananaCatFastAttackOnce = BananaCatFastAttackOnce
-
-if SettingAutoFarmSection and type(SettingAutoFarmSection.CreateToggle) == "function" then
-    SettingAutoFarmSection.CreateToggle({
-        Title = "Fast Attack",
-        Desc = "Banana Cat historical Fast Attack",
-        Default = Settings["Fast Attack"] or false,
-    }, function(v)
-        Settings["Fast Attack"] = v and true or false
-        getgenv().BananaCatFastAttackEnabled = Settings["Fast Attack"]
-        SaveSettings("Fast Attack", Settings["Fast Attack"])
-    end)
-
-    SettingAutoFarmSection.CreateToggle({
-        Title = "Super Fast Attack",
-        Desc = "Banana Cat historical Super Fast Attack",
-        Default = Settings["Super Fast Attack"] or false,
-    }, function(v)
-        Settings["Super Fast Attack"] = v and true or false
-        getgenv().BananaCatSuperFastAttackEnabled = Settings["Super Fast Attack"]
-        if Settings["Super Fast Attack"] then
-            getgenv().BananaCatFastAttackEnabled = true
-            Settings["Fast Attack"] = true
-            SaveSettings("Fast Attack", true)
-        end
-        SaveSettings("Super Fast Attack", Settings["Super Fast Attack"])
-    end)
-end
 
 task.spawn(function()
     while task.wait() do
@@ -22612,8 +22910,7 @@ function AutoCDK(...)local __args = {...};local b = __args[1];return function()i
 -- TARGET-V14 FUNCTION: AutoChangeDragonstormWithSkullGuitar (source-recovery line 1612)
 function AutoChangeDragonstormWithSkullGuitar(...)local __args = {...};local b = __args[1];local Z = __args[5];return function()if StatusCheckLeviathan()=="I DONT KNOW"then getgenv().WebhookIDK=true;local Z=DetectSeaEvents(true);if not Z then getgenv().PathSeaBeast=false;getgenv().PathTerrorshark=false;getgenv().PathSpinBoat=false;else getgenv().DesIdk=true;if getgenv().TweenBoat then getgenv().TweenBoat:Pause();getgenv().TweenBoat:Cancel();end;if Z.Name=="Terrorshark"then getgenv().PathTerrorshark=Z;end;getgenv().PathSpinBoat=Z;repeat task.wait();spawn(function()TeleportSeaEvents(Z);end);if Z:FindFirstChildWhichIsA("Humanoid")then if Settings["Use Dragonstorm For Sea Event"]then if Settings["Auto Change Dragonstorm With Skull Guitar"]then if not NameWeapon("Gun")or NameWeapon("Gun")~="Dragonstorm"then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack({[1]="LoadItem",[2]="Dragonstorm"}));end;end;equiptool(NameWeapon("Gun"));SpamGunDragonStorm(Z.HumanoidRootPart);if b[1]:DistanceFromCharacter(Z.HumanoidRootPart.Position)<400 then UseSkillGun();end;elseif Settings["Use Click M1 Fruit For Sea Event"]then equiptool(NameWeapon("Blox Fruit"));local F=NameWeapon("Blox Fruit");if b[1].Character:FindFirstChild(F)and(b[1].Character[F]:FindFirstChild("LeftClickRemote"))then getgenv().UseFruitM1(Z);end;else UsedualFlock();ClickM1(Z,true);end;else local F=Z:FindFirstChild("HumanoidRootPart")or(Z:FindFirstChild("Engine"));if Z.Name=="SeaBeast1"then getgenv().PathSeaBeast=Z;getgenv().AimPos=CFrame.new(F.Position.X,40,F.Position.Z);else getgenv().AimPos=CFrame.new(b[1].Character.HumanoidRootPart.Position.X,-58,b[1].Character.HumanoidRootPart.Position.Z);end;if Settings["Use Dragonstorm For Sea Event"]and Z.Name~="SeaBeast1"then if Settings["Auto Change Dragonstorm With Skull Guitar"]then if not NameWeapon("Gun")or NameWeapon("Gun")~="Dragonstorm"then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack({[1]="LoadItem",[2]="Dragonstorm"}));end;end;equiptool(NameWeapon("Gun"));SpamGunDragonStorm(F);if b[1]:DistanceFromCharacter(F.Position)<400 then UseSkillGun();end;elseif Settings["Use Click M1 Skull Guitar For Sea Event"]then if Settings["Auto Change Dragonstorm With Skull Guitar"]then if not NameWeapon("Gun")or NameWeapon("Gun")~="Skull Guitar"then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack({[1]="LoadItem",[2]="Skull Guitar"}));end;end;equiptool(NameWeapon("Gun"));SpamGunSkullGuitar(F);if b[1]:DistanceFromCharacter(F.Position)<400 then UseSkillGun();end;elseif Settings["Use Click M1 Fruit For Sea Event"]then equiptool(NameWeapon("Blox Fruit"));local c=NameWeapon("Blox Fruit");if b[1].Character:FindFirstChild(c)and(b[1].Character[c]:FindFirstChild("LeftClickRemote"))then if Z.Name=="SeaBeast1"then getgenv().UseFruitM1(Z);else getgenv().UseFruitM1Boat(F.CFrame*CFrame.new(0,-35,0));end;end;elseif b[1]:DistanceFromCharacter(F.Position)<400 then AutoUseSkillSeabeast();end;end;until not Z or not Z.Parent or not Settings["Auto Destroy IDK"]or Z:FindFirstChild("Health")and Z.Health.Value==0 or Z:FindFirstChildWhichIsA("Humanoid")and Z.Humanoid.Health==0;getgenv().DesIdk=false;end;elseif getgenv().WebhookIDK and Settings["Webhook Destroy IDK"]then getgenv().WebhookDestroyIdk();getgenv().WebhookIDK=false;end;getgenv().DesIdk=false;end;end
 
--- TARGET-V14 FUNCTION: AutoChest (source-recovery line 1333)
-function AutoChest(...)local __args = {...};local b = __args[1];local Z = __args[5];return function()if not StackFarmOther then return;end;local Z=Settings["Value Collect Chest to Hop"]or 20;if CheckNameBoss("Darkbeard")and Settings["Attack Darkbeard"]then b[1][7][b[1][6]]=Z;return;end;if DetectItemPlr("Fist of Darkness")and Settings["Summon Darkbeard"]then b[1][7][b[1][6]]=Z;return;end;if(DetectItemPlr("Fist of Darkness")or(DetectItemPlr("God's Chalice")))and Settings["Tween Safe if have Items"]then return;end;if b[1][7][b[1][6]]and b[1][7][b[1][6]]>=Z and Settings["Auto Chest Hop"]then HopServer();return;end;Z=GetNearestChest();if Z then b[1][7][b[1][6]]+=1;local F;repeat task.wait();if(game.Players.LocalPlayer.Character.HumanoidRootPart.Position-Z.Position).Magnitude<=5 then if not F then F=(tick());elseif tick()-F>=5 then Instance.new("IntValue",Z).Name="Ignored";wait(0.1);end;if not Settings["Use Method Teleport"]then game:GetService("VirtualInputManager"):SendKeyEvent(true,"Space",false,game);wait();game:GetService("VirtualInputManager"):SendKeyEvent(false,"Space",false,game);end;TweenManager.CancelCurrent();end;if Settings["Use Method Teleport"]then b[2].Character.HumanoidRootPart.CFrame=Z.CFrame;TweenManager.CancelCurrent();else toTarget(Z.CFrame,true);end;until not Z or not Z.Parent or not Settings["Auto Chest"]or(Z:GetAttribute("IsDisabled"))or(Z:FindFirstChild("Ignored"))or not Z:FindFirstChild("TouchInterest")or not StackFarmOther;else local Z=PathFindChest();if Z then toTarget(Z.Part.CFrame);if(Z.Part.Position-b[2].Character.HumanoidRootPart.Position).Magnitude<=100 or(GetNearestChest())then Instance.new("IntValue",Z).Name="Ignored";end;else for Z,Z in b[3](game:GetService("Workspace")._WorldOrigin.PlayerSpawns.Pirates:GetChildren())do if Z:FindFirstChild("Ignored")then Z:FindFirstChild("Ignored"):Destroy();end;end;end;end;end;end
+-- (removida: sobrescrita quebrada de AutoChest; vale a versão original)
 
 -- TARGET-V14 FUNCTION: AutoCraftSharkAnchor (source-recovery line 385)
 function AutoCraftSharkAnchor(...)local __args = {...};local b = __args[1];local Z = __args[5];return function()if CheckItemInventory("Shark Anchor")then b[1].CreateNoti({Title="Banana Cat Hub",Desc="Done Shark Anchor",ShowTime=5});wait(5);return;end;if not CheckItemInventory("Monster Magnet")then if not CheckItemInventory("Shark Tooth Necklace")and(CheckCountItem("Mutant Tooth",1))and(CheckCountItem("Shark Tooth",5))then game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/Craft"):InvokeServer(unpack({[1]="Craft",[2]="ToothNecklace",[3]=1,[4]={}}));elseif not CheckItemInventory("Terror Jaw")and(CheckCountItem("Mutant Tooth",2))and(CheckCountItem("Shark Tooth",5))and(CheckCountItem("Terror Eyes",1))and(CheckCountItem("Fool's Gold",10))then game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/Craft"):InvokeServer(unpack({[1]="Craft",[2]="TerrorJaw",[3]=1,[4]={}}));elseif CheckItemInventory("Shark Tooth Necklace")and(CheckItemInventory("Terror Jaw"))and(CheckCountItem("Terror Eyes",2))and(CheckCountItem("Shark Tooth",10))and(CheckCountItem("Electric Wing",10))and(CheckCountItem("Fool's Gold",20))then game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/Craft"):InvokeServer(unpack({[1]="Craft",[2]="SharkAnchor",[3]=1,[4]={}}));end;end;end;end
@@ -22621,8 +22918,7 @@ function AutoCraftSharkAnchor(...)local __args = {...};local b = __args[1];local
 -- TARGET-V14 FUNCTION: AutoEventPrehistoricIsland (source-recovery line 1192)
 function AutoEventPrehistoricIsland(...)local __args = {...};local b = __args[1];local Z = __args[5];return function()if game:GetService("Workspace").Map:FindFirstChild("PrehistoricIsland")then if not b[1]:GetAttribute("CurrentLocation")or b[1]:GetAttribute("CurrentLocation")~="Prehistoric Island"then local Z=DetectNpc("Fossil Expert");if Z then toTarget(Z.HumanoidRootPart.CFrame);return;end;end;if DetectLava()then local Z,F=workspace.Map.PrehistoricIsland:GetDescendants();for c,c in b[2],Z,F do if c.Name=="TouchInterest"and c.Parent.Name~="TrialTeleport"then c:Destroy();end;end;end;if#workspace.Map.PrehistoricIsland.Core.InteriorLava:GetChildren()>0 then DeleteLava();end;if not game:GetService("Players").LocalPlayer.PlayerGui.Main.TopHUDList.PrehistoricRaidTimer.Visible and not game:GetService("Players").LocalPlayer.PlayerGui.Main.TopHUDList.RaidTimer.Visible then if workspace.Map.PrehistoricIsland.Core:FindFirstChild("ActivationPrompt")and(workspace.Map.PrehistoricIsland.Core.ActivationPrompt:FindFirstChild("ProximityPrompt"))then toTarget(workspace.Map.PrehistoricIsland.Core.ActivationPrompt.CFrame);if b[1]:DistanceFromCharacter(workspace.Map.PrehistoricIsland.Core.ActivationPrompt.Position)<8 then fireproximityprompt(workspace.Map.PrehistoricIsland.Core.ActivationPrompt.ProximityPrompt,1);wait(3);end;return;elseif not workspace.Map.PrehistoricIsland.Core:FindFirstChild("ActivationPrompt")and not workspace.Map.PrehistoricIsland.Core:FindFirstChild("FossilExpertSpawn")then local Z=DetectNpc("Fossil Expert");if Z then toTarget(Z.HumanoidRootPart.CFrame);return;end;end;else if b[3][7][b[3][6]]then local Z=workspace.Map.PrehistoricIsland.Core.PrehistoricRelic.Skull;repeat task.wait();toTarget(Z.CFrame);until b[1]:DistanceFromCharacter(Z.Position)<=200 or(DetectGolem())or(DetectRockVolcano());b[3][7][b[3][6]]=false;return;end;local Z=DetectGolem();if Z then repeat task.wait();toTarget(Z.HumanoidRootPart.CFrame*CFrame.new(0,20,7));if Settings["Select Method Kill Golem"]=="Instant Kill [ Risk and can bug no die mob ]"then if b[1]:DistanceFromCharacter(Z.HumanoidRootPart.Position)<50 then KillRaidEnemy();end;else equiptool(NameWeapon(Settings["Select Weapon Kill Golem"]or"Melee"));getgenv().ClickM1Volcano(Z);end;if not getgenv().KillMobRaid and Settings["Kill Aura Only Raid And Volcano"]then getgenv().KillMobRaid=true;local F=Settings["Time Delay Kill"]or 5;Z.Humanoid:ChangeState(Enum.HumanoidStateType.Dead);delay(F,function()getgenv().KillMobRaid=false;end);end;until not IsMobAlive(Z)or not Settings["Auto Event Prehistoric Island"];end;Z=DetectRockVolcano();if Z then if Settings["Fix Volcano Safe"]then local F=DetectPositionVolcano();local c,c=CheckPosnearRock(F,b[1].Character.HumanoidRootPart);if b[1]:DistanceFromCharacter((CheckPosnearRock(F,Z.WorldPivot)))>=400 then b[4][7][b[4][6]]=c+1;if c>=7 then b[4][7][b[4][6]]=1;end;local c=F[b[4][7][b[4][6]]];toTarget(CFrame.new(c));else local F=b[5][math.floor(Z.WorldPivot.Position.Y)];repeat task.wait();if b[1]:DistanceFromCharacter((Z.WorldPivot*F).Position)>8 then toTarget(Z.WorldPivot*F);end;if b[1]:DistanceFromCharacter(Z.WorldPivot.Position)<100 then AutoUseSkillFixLava();end;getgenv().AimPos=Z.WorldPivot;local c=workspace.CurrentCamera;b[6].Hit=Z.WorldPivot;b[6].Target=Z;until not Z or not Z.Parent or not Settings["Auto Event Prehistoric Island"]or not Z.VFXLayer.Specs.Enabled or(DetectGolem());F=DetectGolem();if not F then b[3][7][b[3][6]]=true;end;wait(1);end;else local F=b[5][math.floor(Z.WorldPivot.Position.Y)];repeat task.wait();if b[1]:DistanceFromCharacter((Z.WorldPivot*F).Position)>8 then toTarget(Z.WorldPivot*F);end;if b[1]:DistanceFromCharacter(Z.WorldPivot.Position)<100 then AutoUseSkillFixLava();end;getgenv().AimPos=Z.WorldPivot;local c=workspace.CurrentCamera;b[6].Hit=Z.WorldPivot;b[6].Target=Z;until not Z or not Z.Parent or not Settings["Auto Event Prehistoric Island"]or not Z.VFXLayer.Specs.Enabled or(DetectGolem());F=DetectGolem();if not F then b[3][7][b[3][6]]=true;end;end;end;end;end;end;end
 
--- TARGET-V14 FUNCTION: AutoFireLeviathanHeart (source-recovery line 1210)
-function AutoFireLeviathanHeart(...)local __args = {...};local b = __args[1];return function()if workspace.Map:FindFirstChild("FrozenHeart")then if not workspace.Map.FrozenHeart.Inside:GetAttribute("Harpooned")then local Z=checkboatBeastHunter();NoclipBoat(Z);local F,c,l,H=game:service("TweenService"),CFrame.new(workspace.Map:FindFirstChild("FrozenHeart").Cube.Position.X,Z.WorldPivot.Y,workspace.Map:FindFirstChild("FrozenHeart").Cube.Position.Z)*CFrame.new(0,0,300),CFrame.Angles,math.rad;local H=c*l(0,6.283185307179586,0);if(H.Position-Z.VehicleSeat.Position).Magnitude>5 then if b[1].Character.Humanoid.SeatPart and b[1].Character.Humanoid.SeatPart.Name=="VehicleSeat"then l=TweenInfo.new((H.Position-Z.VehicleSeat.Position).Magnitude/150,Enum.EasingStyle.Quad);c=F:Create(Z.VehicleSeat,l,{CFrame=H});c:Play();c.Completed:wait();wait(1);b[2][7][b[2][6]](Z,workspace.Map:FindFirstChild("FrozenHeart").Inside.Position);else toTarget(Z.VehicleSeat.CFrame);end;elseif b[1].Character.Humanoid.SeatPart and b[1].Character.Humanoid.SeatPart.Parent.Name=="Harpoon"then local F={[1]="FireHarpoon",[2]=0.7853981633974483,[3]=4.4342573293783646E-4,[4]=Z.Harpoon,[5]=workspace:GetServerTimeNow()};game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(F));else toTarget(Z.Harpoon.Seat.CFrame);end;else b[3].CreateNoti({Title="Banana Cat Hub",Desc="Successfully Fire Shoot Heart Leviathan",ShowTime=5});wait(5);end;end;end;end
+-- (removida: sobrescrita quebrada de AutoFireLeviathanHeart; vale a versão original)
 
 -- TARGET-V14 FUNCTION: AutoGetGhoul (source-recovery line 259)
 function AutoGetGhoul(...)local __args = {...};local b = __args[1];local Z = __args[5];return function()if game.PlaceId~=getgenv().CheckPlaceId2 then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack({[1]="TravelDressrosa"}));return;end;if game:GetService("Players").LocalPlayer.Data.Race.Value=="Ghoul"or game.ReplicatedStorage.Remotes.CommF_:InvokeServer("Ectoplasm","BuyCheck",4,true)==2 or game.ReplicatedStorage.Remotes.CommF_:InvokeServer("Ectoplasm","Change",4,true)==1 then b[1].CreateNoti({Title="Banana Cat Hub",Desc="Plz Turn Off",ShowTime=5});wait(5);return;end;if not CheckCountItem("Ectoplasm",100)then local Z={"Ship Deckhand","Ship Steward","Ship Officer","Ship Engineer"};local F=DetectMob(Z);if F then repeat task.wait();sizepart(F);BringMob(F);UsedualFlock();ClickM1(F);if Settings["Select Weapon"]=="Blox Fruit"then toTarget(F.HumanoidRootPart.CFrame*CFrame.new(-7,getgenv().YPosFruit or 20,0));else toTarget(F.HumanoidRootPart.CFrame*CFrame.new(7,20,0));end;until not IsMobAlive(F)or not Settings["Auto Get Ghoul"];elseif b[2](Z)=="table"then if#b[3][7][b[3][6]]>=#Z then b[3][7][b[3][6]]={};return;end;local F=DetectPartSpawnMob(DetectNameTablePart(Z));if F then table.insert(b[3][7][b[3][6]],DetectNameTablePart(Z));repeat wait();toTarget(F.CFrame*CFrame.new(0,60,0));until(F.Position-b[4].Character.HumanoidRootPart.Position).Magnitude<=100 or(DetectMob(Z))or not Settings["Auto Get Ghoul"];wait(1);end;else local F=DetectPartSpawnMob(Z,true);if F then Instance.new("IntValue",F).Name="Ignored";repeat wait();toTarget(F.CFrame*CFrame.new(0,60,0));until(F.Position-b[4].Character.HumanoidRootPart.Position).Magnitude<=100 or(DetectMob(Z))or not Settings["Auto Get Ghoul"];wait(1);else DeleteIgnoredMobSpawn();end;end;return;end;if DetectItemPlr("Hellfire Torch")then if(CFrame.new(918.615234,122.202454,33454.3789,-0.999998808,0,0.00172644004,0,1,0,-0.00172644004,0,-0.999998808).Position-b[4].Character.HumanoidRootPart.Position).Magnitude<=8 then game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack({[1]="Ectoplasm",[2]="BuyCheck",[3]=4}));v352=game.ReplicatedStorage.Remotes.CommF_:InvokeServer("Ectoplasm","Buy",4);else toTarget(CFrame.new(918.615234,122.202454,33454.3789,-0.999998808,0,0.00172644004,0,1,0,-0.00172644004,0,-0.999998808));end;else local Z=CheckNameBoss("Cursed Captain");if Z then repeat task.wait();sizepart(Z);UsedualFlock();ClickM1(Z);if Settings["Select Weapon"]=="Blox Fruit"then toTarget(Z.HumanoidRootPart.CFrame*CFrame.new(-7,getgenv().YPosFruit or 20,0));else toTarget(Z.HumanoidRootPart.CFrame*CFrame.new(7,20,0));end;until not IsMobAlive(Z)or not Settings["Auto Get Ghoul"];wait(5);else if Settings["Hop Server Get Ghoul"]then SpecialHop("Cursed Captain");end;b[1].CreateNoti({Title="Banana Cat Hub",Desc="Wating Boss Spawn",ShowTime=5});wait(5);end;end;end;end
@@ -22747,8 +23043,7 @@ function GetDistanceVM(b,Z)if not localPlayerFunctions.IsAlive()then return math
 -- TARGET-V14 FUNCTION: GetNearestBerry (source-recovery line 379)
 function GetNearestBerry(...)local __args = {...};local b = __args[1];local Z = __args[5];return function()local Z,F=game:GetService("CollectionService"):GetTagged("BerryBush");local c=math.huge;local l=nil;for H,M in b[1],Z,F do if not M.Parent:FindFirstChild("IgnoredBerry")then H=b[2]:DistanceFromCharacter(M.Parent:GetAttribute("CFrame").Position);if c>H then c,l=H,M;end;end;end;return l;end;end
 
--- TARGET-V14 FUNCTION: GetNearestChest (source-recovery line 1246)
-function GetNearestChest(...)local __args = {...};local b = __args[1];local Z = __args[5];return function()local Z,F=game:GetService("CollectionService"):GetTagged("_ChestTagged");local c=math.huge;local l=nil;local H=nil;for M,S in b[1],Z,F do if not S:GetAttribute("IsDisabled")and not S:FindFirstChild("Ignored")then M=b[2]:DistanceFromCharacter(S.Position);if M<c then c,l,H=M,i,S;end;end;end;return H;end;end
+-- (removida: sobrescrita quebrada de GetNearestChest; vale a versão original)
 
 -- (removida: sobrescrita quebrada de HopServer; vale a versão original acima)
 
@@ -22920,28 +23215,7 @@ end
 
 -- [BANANA CAT RECOVERED] CollectCombatTargetsFactory
 
--- [PASS31 SOURCE BODY] BypassTp
-function BypassTp(target)
-    if not target then
-        return nil
-    end
-
-    local floatForce = target:FindFirstChild("FloatForce")
-    if not floatForce then
-        floatForce = Instance.new("BodyVelocity")
-        floatForce.Name = "FloatForce"
-        floatForce.P = 10000
-        floatForce.MaxForce = Vector3.new(100000, 100000, 100000)
-        floatForce.Velocity = Vector3.zero
-        floatForce.Parent = target
-    else
-        floatForce.P = 10000
-        floatForce.MaxForce = Vector3.new(100000, 100000, 100000)
-        floatForce.Velocity = Vector3.zero
-    end
-
-    return floatForce
-end
+-- (removida: PASS31 BypassTp sobrescrevia a tabela BypassTp do Teleport Bypass)
 
 -- [BANANA CAT RECOVERED] createPage
 
@@ -24689,39 +24963,9 @@ local function __BC_FastAttackOnce()
     end)
 end
 
-getgenv().Usefastattack = Settings["Fast Attack"] == true or getgenv().Usefastattack == true
-getgenv().fastattect = getgenv().Usefastattack
-getgenv().SuperFastAttack = Settings["Super Fast Attack"] == true or getgenv().SuperFastAttack == true
-
-if SettingAutoFarmSection and type(SettingAutoFarmSection.CreateToggle) == "function" then
-    pcall(function()
-        SettingAutoFarmSection.CreateToggle({
-            Title = "Fast Attack",
-            Desc = "Fast Attack recovered from the Banana Cat / BF-MAIN source",
-            Default = Settings["Fast Attack"] == true,
-        }, function(Value)
-            getgenv().Usefastattack = Value == true
-            getgenv().fastattect = getgenv().Usefastattack
-            SaveSettings("Fast Attack", getgenv().Usefastattack)
-        end)
-    end)
-
-    pcall(function()
-        SettingAutoFarmSection.CreateToggle({
-            Title = "Super Fast Attack",
-            Desc = "Accelerated Fast Attack mode recovered from the Banana Cat / BF-MAIN source",
-            Default = Settings["Super Fast Attack"] == true,
-        }, function(Value)
-            getgenv().SuperFastAttack = Value == true
-            if getgenv().SuperFastAttack then
-                getgenv().Usefastattack = true
-                getgenv().fastattect = true
-            end
-            SaveSettings("Super Fast Attack", getgenv().SuperFastAttack)
-            SaveSettings("Fast Attack", getgenv().Usefastattack)
-        end)
-    end)
-end
+getgenv().Usefastattack = false
+getgenv().fastattect = false
+getgenv().SuperFastAttack = false
 
 task.spawn(function()
     while task.wait() do
